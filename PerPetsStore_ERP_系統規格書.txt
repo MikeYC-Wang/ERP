@@ -1,0 +1,100 @@
+PerPetsStore ERP 系統規格書
+一、 系統與技術架構
+專案名稱：PerPetsStore ERP
+
+前端框架：Vue.js 3 (Composition API) + Vite + TypeScript
+
+UI/UX 規範：
+
+全面採用 RWD 響應式設計。
+
+圖示統一使用 FontAwesome (如 <i class="fa-solid fa-file-invoice-dollar"></i>)，禁用任何 Emoji。
+
+視覺特效：結合 Spline 實作 3D 互動元素，並使用 Apache ECharts 繪製動態圖表。
+
+後端框架：Python 3 + Django + Django REST Framework
+
+資料庫：PostgreSQL
+
+二、 核心模組與功能需求
+1. 財務會計模組 (Financial Accounting)
+會計科目管理：
+
+支援自定義科目（資產、負債、投入、收入、營業費用）。
+
+日記帳與傳票系統：
+
+支援手動與系統自動建立傳票。
+
+防呆機制：前端與後端雙重檢核，借方總計必須等於貸方總計，否則拒絕寫入。
+
+財務報表 (試算表、損益表、資產負債表)：
+
+動態篩選：報表上方的「年份」下拉式選單，邏輯應設定為動態顯示包含當前年份在內的「最近三年」，避免選單過長。
+
+2. 進銷存與採購模組 (Inventory & Purchasing)
+進貨與成本計算 (核心 FIFO 邏輯)：
+
+每次進貨皆產生獨立的 inventory_batch 紀錄。
+
+資料來源規範：在處理進貨請款與計算進貨總額時，金額必須嚴格從 purchase_apply_item (採購明細表) 中的 fee 欄位加總取得，絕不可直接讀取母單 (Parent Case) 的總額，以確保後續 FIFO 扣除明細時的成本準確度。
+
+庫存水位監控：即時查看各 SKU 的剩餘數量與對應的批次成本。
+
+3. 訂單與銷售模組 (Order Management)
+訂單列表介面：
+
+訂單狀態會以分頁標籤 (Tabs) 呈現（例如：待出貨、已出貨、已完成）。
+
+前端計算邏輯：當系統在計算當前頁面的「案件總數」或「總金額」時，必須限定只計算「當前正在瀏覽的 Tab」內的資料，不可將所有 Tab 的資料混在一起計算。
+
+自動拋轉會計分錄：訂單完成後，系統依據 FIFO 邏輯扣除最舊的 inventory_batch，並自動生成「借：商品成本 / 貸：商品存貨」以及「借：應收帳款(或銀行存款) / 貸：商品銷售收入」的傳票。
+
+4. 數據儀表板 (Dashboard)
+使用 Apache ECharts 實作可視化圖表。
+
+包含：每月淨利趨勢折線圖、營業費用結構圓餅圖、熱銷商品毛利排行榜。
+
+視覺可結合 3D 元素（如以立體長條圖呈現特定日期的銷售高峰）。
+
+
+
+三、 前端 UI/UX 開發指南 (Frontend UI/UX Prompt)
+[請前端工程師嚴格遵循以下視覺與架構規範進行開發]
+Act as an expert UI/UX designer and frontend developer. Create a highly detailed, responsive (RWD) Dashboard UI for an E-commerce ERP and Accounting system named "PerPetsStore".
+
+**Visual Style & Art Direction:**
+- A modern, clean, and cozy SaaS UI. Ensure the interface feels professional but warm and welcoming.
+- Incorporate the brand identity based on a circular logo design: a smiling yellow Shiba Inu with the text "PerPetsStore" and the slogan "Because They Deserve the Best.". Place a placeholder for this logo at the top of the left sidebar.
+- Typography: Use clean, highly readable modern sans-serif fonts (like 'Inter' or 'Roboto') for all tables, numbers, and descriptive text. You may use a slightly playful or rounded font for main headings to match the pet store vibe.
+
+**Layout & Styling Constraints:**
+- Use thin, subtle borders (border-slate-200/slate-700) and soft, small drop shadows (shadow-sm) for cards and containers.
+- ABSOLUTELY AVOID Cyberpunk, neon colors, dark techy vibes, or Neo-brutalist thick black borders.
+
+**Iconography Constraint:**
+- STRICTLY NO EMOJIS. You must use ONLY FontAwesome icons (e.g., `<i class="fa-solid fa-box"></i>`, `<i class="fa-solid fa-file-invoice-dollar"></i>`).
+
+**Theme & Color Palette (Tailwind Dark Mode):**
+- Implement Tailwind's `dark:` classes for a professional dark/light mode toggle.
+- **Light Mode (Cozy Light):** Warm, inviting off-white background (`bg-stone-50`). Text in deep slate-900. Use a professional warm amber-yellow derived from the Shiba Inu logo for active buttons, success metrics, and hover states.
+- **Dark Mode (Professional Dark):** Deep charcoal/slate gray background (`bg-slate-800`). Text in off-white (`stone-50`). Accent color should be a muted, warmer gold-amber. Avoid high-contrast neon colors completely.
+
+**Layout Structure:**
+1. **Left Sidebar (Navigation):**
+   - Top logo area: Display the circular Shiba Inu logo placeholder with its slogan.
+   - Menu items with FontAwesome icons: Dashboard, Accounting, Inventory, Orders, Settings. Design it as a collapsible sidebar for mobile RWD.
+2. **Top Header:**
+   - Breadcrumbs navigation and page title.
+   - A Dark/Light mode toggle button (FontAwesome sun/moon icon).
+   - User profile section displaying "Mike" with a clean avatar.
+3. **Main Content Area:**
+   - **Top Row (Metrics):** 3 professional cards (Total Revenue, Total Expenses, Net Profit). Include subtle FontAwesome icons (e.g., arrow-up-right, arrow-down-left).
+   - **Middle Row (Visuals):** Two large panels. 
+     - Left Panel: "Revenue & Expense Trend". Make a sleek container as a placeholder for dynamic Apache ECharts.
+     - Right Panel: "3D Interactive View". Make a visually appealing container indicating space for a 3D Spline model (e.g., a 3D Shiba Inu or 3D data graph).
+   - **Bottom Row (Data):** A "Recent Journal Entries" table. Columns: Date, Account, Description, Debit, Credit. Use standard text, professional alternating row colors, and hover effects. Ensure full responsiveness on mobile.
+
+**Technical Requirements:**
+- Output clean, semantic HTML with Tailwind CSS utility classes.
+- Ensure the layout is perfectly responsive (stacking cards, hidden hamburger menu sidebar).
