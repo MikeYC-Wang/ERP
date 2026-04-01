@@ -9,4 +9,4 @@ __pycache__/
 .env
 
 # OS
-.DS_Store
+.DS_Storedb.sqlite3
