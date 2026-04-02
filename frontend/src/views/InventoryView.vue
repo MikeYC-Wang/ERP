@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import {
+  getProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct as apiDeleteProduct,
+  getInventoryBatches,
+} from '@/api/inventory'
+
+// ─── Loading ───
+const loading = ref(false)
 
 // ─── Tab State ───
 const activeTab = ref<'products' | 'stock'>('products')
@@ -37,20 +47,38 @@ function openEditProduct(product: Product) {
   showProductModal.value = true
 }
 
-function saveProduct() {
+async function saveProduct() {
   if (editingProduct.value) {
+    try {
+      await updateProduct(editingProduct.value.id, productForm.value)
+    } catch (e) {
+      console.warn('Failed to update product via API, applying locally', e)
+    }
     const idx = products.value.findIndex((p) => p.id === editingProduct.value!.id)
     if (idx !== -1) {
       products.value[idx] = { ...products.value[idx], ...productForm.value }
     }
   } else {
+    try {
+      const res = await createProduct(productForm.value)
+      products.value.push(res.data)
+      showProductModal.value = false
+      return
+    } catch (e) {
+      console.warn('Failed to create product via API, applying locally', e)
+    }
     const newId = Math.max(...products.value.map((p) => p.id), 0) + 1
     products.value.push({ id: newId, ...productForm.value })
   }
   showProductModal.value = false
 }
 
-function deleteProduct(id: number) {
+async function deleteProduct(id: number) {
+  try {
+    await apiDeleteProduct(id)
+  } catch (e) {
+    console.warn('Failed to delete product via API, applying locally', e)
+  }
   products.value = products.value.filter((p) => p.id !== id)
 }
 
@@ -88,6 +116,36 @@ const filteredStock = computed(() => {
   if (stockFilter.value === 'all') return stockBatches.value
   return stockBatches.value.filter((b) => b.productName === stockFilter.value)
 })
+
+// ─── Load from API ───
+onMounted(async () => {
+  loading.value = true
+  try {
+    const [productsRes, batchesRes] = await Promise.all([
+      getProducts().catch(() => null),
+      getInventoryBatches().catch(() => null),
+    ])
+    if (productsRes?.data && Array.isArray(productsRes.data)) {
+      products.value = productsRes.data
+    }
+    if (batchesRes?.data && Array.isArray(batchesRes.data)) {
+      stockBatches.value = batchesRes.data.map((b: Record<string, unknown>) => ({
+        id: b.id as number,
+        productName: (b.product_name as string) || '',
+        sku: (b.sku as string) || '',
+        batchNumber: (b.batch_number as string) || '',
+        quantity: b.quantity as number,
+        remainingQuantity: b.remaining_quantity as number,
+        unitCost: b.unit_cost as number,
+        receivedDate: (b.received_date as string) || '',
+      }))
+    }
+  } catch (e) {
+    console.warn('Inventory API unavailable, using fallback data', e)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -119,111 +177,118 @@ const filteredStock = computed(() => {
       </nav>
     </div>
 
-    <!-- ═══════ Tab 1: Product Management ═══════ -->
-    <div v-if="activeTab === 'products'">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Products</h2>
-        <button
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors"
-          @click="openAddProduct"
-        >
-          <i class="fa-solid fa-plus text-xs"></i>
-          Add Product
-        </button>
-      </div>
-
-      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">SKU</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Product Name</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Unit</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Price</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(product, index) in products"
-                :key="product.id"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
-              >
-                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ product.sku }}</td>
-                <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ product.name }}</td>
-                <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ product.unit }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ product.price.toFixed(2) }}</td>
-                <td class="px-5 py-3 text-right">
-                  <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors mr-2" @click="openEditProduct(product)">
-                    <i class="fa-solid fa-pen-to-square"></i> Edit
-                  </button>
-                  <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" @click="deleteProduct(product.id)">
-                    <i class="fa-solid fa-trash"></i> Delete
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <!-- Loading Spinner -->
+    <div v-if="loading" class="flex items-center justify-center py-12">
+      <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-500"></i>
     </div>
 
-    <!-- ═══════ Tab 2: Stock Levels ═══════ -->
-    <div v-if="activeTab === 'stock'">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Stock Levels</h2>
-        <select
-          v-model="stockFilter"
-          class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
-        >
-          <option value="all">All Products</option>
-          <option v-for="name in uniqueProductNames" :key="name" :value="name">{{ name }}</option>
-        </select>
-      </div>
+    <template v-else>
+      <!-- ═══════ Tab 1: Product Management ═══════ -->
+      <div v-if="activeTab === 'products'">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Products</h2>
+          <button
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors"
+            @click="openAddProduct"
+          >
+            <i class="fa-solid fa-plus text-xs"></i>
+            Add Product
+          </button>
+        </div>
 
-      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Product Name</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">SKU</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Batch No.</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Received Qty</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Remaining</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Unit Cost</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Received Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(batch, index) in filteredStock"
-                :key="batch.id"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                :class="[
-                  batch.remainingQuantity <= 5
-                    ? 'bg-red-50 dark:bg-red-900/20'
-                    : index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''
-                ]"
-              >
-                <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ batch.productName }}</td>
-                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.sku }}</td>
-                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.batchNumber }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">{{ batch.quantity }}</td>
-                <td class="px-5 py-3 text-right font-mono" :class="batch.remainingQuantity <= 5 ? 'text-red-600 dark:text-red-400 font-bold' : 'text-slate-700 dark:text-stone-200'">
-                  {{ batch.remainingQuantity }}
-                  <i v-if="batch.remainingQuantity <= 5" class="fa-solid fa-triangle-exclamation text-red-500 ml-1 text-xs"></i>
-                </td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ batch.unitCost.toFixed(2) }}</td>
-                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.receivedDate }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">SKU</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Product Name</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Unit</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Price</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(product, index) in products"
+                  :key="product.id"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
+                >
+                  <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ product.sku }}</td>
+                  <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ product.name }}</td>
+                  <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ product.unit }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ product.price.toFixed(2) }}</td>
+                  <td class="px-5 py-3 text-right">
+                    <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors mr-2" @click="openEditProduct(product)">
+                      <i class="fa-solid fa-pen-to-square"></i> Edit
+                    </button>
+                    <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" @click="deleteProduct(product.id)">
+                      <i class="fa-solid fa-trash"></i> Delete
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
+
+      <!-- ═══════ Tab 2: Stock Levels ═══════ -->
+      <div v-if="activeTab === 'stock'">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Stock Levels</h2>
+          <select
+            v-model="stockFilter"
+            class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
+          >
+            <option value="all">All Products</option>
+            <option v-for="name in uniqueProductNames" :key="name" :value="name">{{ name }}</option>
+          </select>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Product Name</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">SKU</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Batch No.</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Received Qty</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Remaining</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Unit Cost</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Received Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(batch, index) in filteredStock"
+                  :key="batch.id"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  :class="[
+                    batch.remainingQuantity <= 5
+                      ? 'bg-red-50 dark:bg-red-900/20'
+                      : index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''
+                  ]"
+                >
+                  <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ batch.productName }}</td>
+                  <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.sku }}</td>
+                  <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.batchNumber }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">{{ batch.quantity }}</td>
+                  <td class="px-5 py-3 text-right font-mono" :class="batch.remainingQuantity <= 5 ? 'text-red-600 dark:text-red-400 font-bold' : 'text-slate-700 dark:text-stone-200'">
+                    {{ batch.remainingQuantity }}
+                    <i v-if="batch.remainingQuantity <= 5" class="fa-solid fa-triangle-exclamation text-red-500 ml-1 text-xs"></i>
+                  </td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ batch.unitCost.toFixed(2) }}</td>
+                  <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.receivedDate }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <!-- ═══════ Product Modal ═══════ -->
     <Teleport to="body">

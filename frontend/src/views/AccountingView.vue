@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import {
+  getAccountSubjects,
+  createAccountSubject,
+  updateAccountSubject,
+  deleteAccountSubject as apiDeleteSubject,
+  getJournalVouchers,
+  createJournalVoucher,
+} from '@/api/accounting'
+
+// ─── Loading ───
+const loading = ref(false)
 
 // ─── Tab State ───
 const activeTab = ref<'subjects' | 'journal' | 'reports'>('subjects')
@@ -38,20 +49,38 @@ function openEditSubject(subject: AccountSubject) {
   showSubjectModal.value = true
 }
 
-function saveSubject() {
+async function saveSubject() {
   if (editingSubject.value) {
+    try {
+      await updateAccountSubject(editingSubject.value.id, subjectForm.value)
+    } catch (e) {
+      console.warn('Failed to update subject via API, applying locally', e)
+    }
     const idx = subjects.value.findIndex((s) => s.id === editingSubject.value!.id)
     if (idx !== -1) {
       subjects.value[idx] = { ...subjects.value[idx], ...subjectForm.value }
     }
   } else {
+    try {
+      const res = await createAccountSubject(subjectForm.value)
+      subjects.value.push(res.data)
+      showSubjectModal.value = false
+      return
+    } catch (e) {
+      console.warn('Failed to create subject via API, applying locally', e)
+    }
     const newId = Math.max(...subjects.value.map((s) => s.id), 0) + 1
     subjects.value.push({ id: newId, ...subjectForm.value })
   }
   showSubjectModal.value = false
 }
 
-function deleteSubject(id: number) {
+async function deleteSubject(id: number) {
+  try {
+    await apiDeleteSubject(id)
+  } catch (e) {
+    console.warn('Failed to delete subject via API, applying locally', e)
+  }
   subjects.value = subjects.value.filter((s) => s.id !== id)
 }
 
@@ -155,8 +184,22 @@ const totalCredit = computed(() =>
 )
 const isBalanced = computed(() => totalDebit.value === totalCredit.value && totalDebit.value > 0)
 
-function saveVoucher() {
+async function saveVoucher() {
   if (!isBalanced.value) return
+  try {
+    const payload = {
+      date: voucherForm.value.date,
+      description: voucherForm.value.description,
+      entries: voucherForm.value.entries.map((e) => ({
+        account_subject: Number(e.accountSubject),
+        debit_amount: e.debitAmount,
+        credit_amount: e.creditAmount,
+      })),
+    }
+    await createJournalVoucher(payload)
+  } catch (e) {
+    console.warn('Failed to create voucher via API, applying locally', e)
+  }
   const newId = Math.max(...vouchers.value.map((v) => v.id), 0) + 1
   vouchers.value.push({
     id: newId,
@@ -228,6 +271,38 @@ const totalLiabilities = computed(
 const totalEquity = computed(
   () => balanceSheetData.equity.reduce((s, e) => s + e.amount, 0),
 )
+
+// ─── Load from API ───
+onMounted(async () => {
+  loading.value = true
+  try {
+    const [subjectsRes, vouchersRes] = await Promise.all([
+      getAccountSubjects().catch(() => null),
+      getJournalVouchers().catch(() => null),
+    ])
+    if (subjectsRes?.data && Array.isArray(subjectsRes.data)) {
+      subjects.value = subjectsRes.data
+    }
+    if (vouchersRes?.data && Array.isArray(vouchersRes.data)) {
+      vouchers.value = vouchersRes.data.map((v: Record<string, unknown>) => ({
+        id: v.id as number,
+        date: v.date as string,
+        voucherNumber: v.voucher_number as string,
+        description: v.description as string,
+        isSystemGenerated: v.is_system_generated as boolean,
+        entries: (v.entries as Array<Record<string, unknown>>)?.map((e) => ({
+          accountSubject: String(e.account_subject),
+          debitAmount: Number(e.debit_amount),
+          creditAmount: Number(e.credit_amount),
+        })) || [],
+      }))
+    }
+  } catch (e) {
+    console.warn('Accounting API unavailable, using fallback data', e)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -260,330 +335,337 @@ const totalEquity = computed(
       </nav>
     </div>
 
-    <!-- ═══════ Tab 1: Account Subjects ═══════ -->
-    <div v-if="activeTab === 'subjects'">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Account Subjects</h2>
-        <button
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors"
-          @click="openAddSubject"
-        >
-          <i class="fa-solid fa-plus text-xs"></i>
-          Add Subject
-        </button>
-      </div>
-
-      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Code</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Name</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Category</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(subject, index) in subjects"
-                :key="subject.id"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
-              >
-                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ subject.code }}</td>
-                <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ subject.name }}</td>
-                <td class="px-5 py-3 text-slate-500 dark:text-slate-400">
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                    {{ subject.category }}
-                  </span>
-                </td>
-                <td class="px-5 py-3 text-right">
-                  <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors mr-2" @click="openEditSubject(subject)">
-                    <i class="fa-solid fa-pen-to-square"></i> Edit
-                  </button>
-                  <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" @click="deleteSubject(subject.id)">
-                    <i class="fa-solid fa-trash"></i> Delete
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <!-- Loading Spinner -->
+    <div v-if="loading" class="flex items-center justify-center py-12">
+      <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-500"></i>
     </div>
 
-    <!-- ═══════ Tab 2: Journal Vouchers ═══════ -->
-    <div v-if="activeTab === 'journal'">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
-          <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Journal Vouchers</h2>
+    <template v-else>
+      <!-- ═══════ Tab 1: Account Subjects ═══════ -->
+      <div v-if="activeTab === 'subjects'">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Account Subjects</h2>
+          <button
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors"
+            @click="openAddSubject"
+          >
+            <i class="fa-solid fa-plus text-xs"></i>
+            Add Subject
+          </button>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Code</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Name</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Category</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(subject, index) in subjects"
+                  :key="subject.id"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
+                >
+                  <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ subject.code }}</td>
+                  <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ subject.name }}</td>
+                  <td class="px-5 py-3 text-slate-500 dark:text-slate-400">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      {{ subject.category }}
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 text-right">
+                    <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors mr-2" @click="openEditSubject(subject)">
+                      <i class="fa-solid fa-pen-to-square"></i> Edit
+                    </button>
+                    <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" @click="deleteSubject(subject.id)">
+                      <i class="fa-solid fa-trash"></i> Delete
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ Tab 2: Journal Vouchers ═══════ -->
+      <div v-if="activeTab === 'journal'">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Journal Vouchers</h2>
+            <select
+              v-model="selectedJournalYear"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
+            >
+              <option v-for="year in recentYears" :key="year" :value="year">{{ year }}</option>
+            </select>
+          </div>
+          <button
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors"
+            @click="openAddVoucher"
+          >
+            <i class="fa-solid fa-plus text-xs"></i>
+            Add Voucher
+          </button>
+        </div>
+
+        <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Date</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Voucher No.</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Description</th>
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Type</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(voucher, index) in filteredVouchers"
+                  :key="voucher.id"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
+                >
+                  <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ voucher.date }}</td>
+                  <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ voucher.voucherNumber }}</td>
+                  <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ voucher.description }}</td>
+                  <td class="px-5 py-3">
+                    <span
+                      v-if="voucher.isSystemGenerated"
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                    >
+                      <i class="fa-solid fa-gear mr-1 text-[10px]"></i> System
+                    </span>
+                    <span
+                      v-else
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                    >
+                      <i class="fa-solid fa-user mr-1 text-[10px]"></i> Manual
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 text-right">
+                    <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
+                      <i class="fa-solid fa-eye"></i> View
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="filteredVouchers.length === 0">
+                  <td colspan="5" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
+                    No vouchers found for {{ selectedJournalYear }}.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ Tab 3: Financial Reports ═══════ -->
+      <div v-if="activeTab === 'reports'">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+              <button
+                v-for="report in ([
+                  { key: 'trial', label: 'Trial Balance' },
+                  { key: 'income', label: 'Income Statement' },
+                  { key: 'balance', label: 'Balance Sheet' },
+                ] as const)"
+                :key="report.key"
+                class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
+                :class="activeReport === report.key
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-stone-50 shadow-sm'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-stone-200'"
+                @click="activeReport = report.key"
+              >
+                {{ report.label }}
+              </button>
+            </div>
+          </div>
           <select
-            v-model="selectedJournalYear"
+            v-model="selectedReportYear"
             class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
           >
             <option v-for="year in recentYears" :key="year" :value="year">{{ year }}</option>
           </select>
         </div>
-        <button
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors"
-          @click="openAddVoucher"
-        >
-          <i class="fa-solid fa-plus text-xs"></i>
-          Add Voucher
-        </button>
-      </div>
 
-      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Date</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Voucher No.</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Description</th>
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Type</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(voucher, index) in filteredVouchers"
-                :key="voucher.id"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
-              >
-                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ voucher.date }}</td>
-                <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ voucher.voucherNumber }}</td>
-                <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ voucher.description }}</td>
-                <td class="px-5 py-3">
-                  <span
-                    v-if="voucher.isSystemGenerated"
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                  >
-                    <i class="fa-solid fa-gear mr-1 text-[10px]"></i> System
-                  </span>
-                  <span
-                    v-else
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                  >
-                    <i class="fa-solid fa-user mr-1 text-[10px]"></i> Manual
-                  </span>
-                </td>
-                <td class="px-5 py-3 text-right">
-                  <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
-                    <i class="fa-solid fa-eye"></i> View
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="filteredVouchers.length === 0">
-                <td colspan="5" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
-                  No vouchers found for {{ selectedJournalYear }}.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════ Tab 3: Financial Reports ═══════ -->
-    <div v-if="activeTab === 'reports'">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
-          <div class="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
-            <button
-              v-for="report in ([
-                { key: 'trial', label: 'Trial Balance' },
-                { key: 'income', label: 'Income Statement' },
-                { key: 'balance', label: 'Balance Sheet' },
-              ] as const)"
-              :key="report.key"
-              class="px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-              :class="activeReport === report.key
-                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-stone-50 shadow-sm'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-stone-200'"
-              @click="activeReport = report.key"
-            >
-              {{ report.label }}
-            </button>
+        <!-- Trial Balance -->
+        <div v-if="activeReport === 'trial'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+            <i class="fa-solid fa-scale-balanced text-amber-500"></i>
+            <h3 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Trial Balance - {{ selectedReportYear }}</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Account Name</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Debit Balance</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Credit Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(row, index) in trialBalanceData"
+                  :key="row.name"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                  :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
+                >
+                  <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ row.name }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">{{ row.debit ? `$${row.debit.toLocaleString()}` : '-' }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">{{ row.credit ? `$${row.credit.toLocaleString()}` : '-' }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
+                  <td class="px-5 py-3 text-slate-900 dark:text-stone-50">Total</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ trialBalanceData.reduce((s, r) => s + r.debit, 0).toLocaleString() }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ trialBalanceData.reduce((s, r) => s + r.credit, 0).toLocaleString() }}</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
-        <select
-          v-model="selectedReportYear"
-          class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
-        >
-          <option v-for="year in recentYears" :key="year" :value="year">{{ year }}</option>
-        </select>
-      </div>
 
-      <!-- Trial Balance -->
-      <div v-if="activeReport === 'trial'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
-          <i class="fa-solid fa-scale-balanced text-amber-500"></i>
-          <h3 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Trial Balance - {{ selectedReportYear }}</h3>
+        <!-- Income Statement -->
+        <div v-if="activeReport === 'income'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+            <i class="fa-solid fa-chart-line text-amber-500"></i>
+            <h3 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Income Statement - {{ selectedReportYear }}</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Item</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="bg-emerald-50/50 dark:bg-emerald-900/10">
+                  <td class="px-5 py-2 font-semibold text-emerald-700 dark:text-emerald-400" colspan="2">Revenue</td>
+                </tr>
+                <tr
+                  v-for="item in incomeStatementData.revenue"
+                  :key="item.name"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                >
+                  <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
+                </tr>
+                <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
+                  <td class="px-5 py-2 text-emerald-700 dark:text-emerald-400">Total Revenue</td>
+                  <td class="px-5 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">${{ incomeTotal.toLocaleString() }}</td>
+                </tr>
+                <tr class="bg-red-50/50 dark:bg-red-900/10">
+                  <td class="px-5 py-2 font-semibold text-red-700 dark:text-red-400" colspan="2">Expenses</td>
+                </tr>
+                <tr
+                  v-for="item in incomeStatementData.expenses"
+                  :key="item.name"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                >
+                  <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
+                </tr>
+                <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
+                  <td class="px-5 py-2 text-red-700 dark:text-red-400">Total Expenses</td>
+                  <td class="px-5 py-2 text-right font-mono text-red-700 dark:text-red-400">${{ expenseTotal.toLocaleString() }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
+                  <td class="px-5 py-3 text-slate-900 dark:text-stone-50">Net Income</td>
+                  <td class="px-5 py-3 text-right font-mono" :class="netIncome >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">${{ netIncome.toLocaleString() }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Account Name</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Debit Balance</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Credit Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(row, index) in trialBalanceData"
-                :key="row.name"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
-              >
-                <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ row.name }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">{{ row.debit ? `$${row.debit.toLocaleString()}` : '-' }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">{{ row.credit ? `$${row.credit.toLocaleString()}` : '-' }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
-                <td class="px-5 py-3 text-slate-900 dark:text-stone-50">Total</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ trialBalanceData.reduce((s, r) => s + r.debit, 0).toLocaleString() }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ trialBalanceData.reduce((s, r) => s + r.credit, 0).toLocaleString() }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
 
-      <!-- Income Statement -->
-      <div v-if="activeReport === 'income'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
-          <i class="fa-solid fa-chart-line text-amber-500"></i>
-          <h3 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Income Statement - {{ selectedReportYear }}</h3>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Item</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="bg-emerald-50/50 dark:bg-emerald-900/10">
-                <td class="px-5 py-2 font-semibold text-emerald-700 dark:text-emerald-400" colspan="2">Revenue</td>
-              </tr>
-              <tr
-                v-for="item in incomeStatementData.revenue"
-                :key="item.name"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-              >
-                <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
-              </tr>
-              <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
-                <td class="px-5 py-2 text-emerald-700 dark:text-emerald-400">Total Revenue</td>
-                <td class="px-5 py-2 text-right font-mono text-emerald-700 dark:text-emerald-400">${{ incomeTotal.toLocaleString() }}</td>
-              </tr>
-              <tr class="bg-red-50/50 dark:bg-red-900/10">
-                <td class="px-5 py-2 font-semibold text-red-700 dark:text-red-400" colspan="2">Expenses</td>
-              </tr>
-              <tr
-                v-for="item in incomeStatementData.expenses"
-                :key="item.name"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-              >
-                <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
-              </tr>
-              <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
-                <td class="px-5 py-2 text-red-700 dark:text-red-400">Total Expenses</td>
-                <td class="px-5 py-2 text-right font-mono text-red-700 dark:text-red-400">${{ expenseTotal.toLocaleString() }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
-                <td class="px-5 py-3 text-slate-900 dark:text-stone-50">Net Income</td>
-                <td class="px-5 py-3 text-right font-mono" :class="netIncome >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">${{ netIncome.toLocaleString() }}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
+        <!-- Balance Sheet -->
+        <div v-if="activeReport === 'balance'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
+            <i class="fa-solid fa-building-columns text-amber-500"></i>
+            <h3 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Balance Sheet - {{ selectedReportYear }}</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Item</th>
+                  <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="bg-blue-50/50 dark:bg-blue-900/10">
+                  <td class="px-5 py-2 font-semibold text-blue-700 dark:text-blue-400" colspan="2">Assets</td>
+                </tr>
+                <tr
+                  v-for="item in balanceSheetData.assets"
+                  :key="item.name"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                >
+                  <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
+                </tr>
+                <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
+                  <td class="px-5 py-2 text-blue-700 dark:text-blue-400">Total Assets</td>
+                  <td class="px-5 py-2 text-right font-mono text-blue-700 dark:text-blue-400">${{ totalAssets.toLocaleString() }}</td>
+                </tr>
 
-      <!-- Balance Sheet -->
-      <div v-if="activeReport === 'balance'" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
-          <i class="fa-solid fa-building-columns text-amber-500"></i>
-          <h3 class="text-sm font-semibold text-slate-700 dark:text-stone-200">Balance Sheet - {{ selectedReportYear }}</h3>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-slate-200 dark:border-slate-700">
-                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Item</th>
-                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="bg-blue-50/50 dark:bg-blue-900/10">
-                <td class="px-5 py-2 font-semibold text-blue-700 dark:text-blue-400" colspan="2">Assets</td>
-              </tr>
-              <tr
-                v-for="item in balanceSheetData.assets"
-                :key="item.name"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-              >
-                <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
-              </tr>
-              <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
-                <td class="px-5 py-2 text-blue-700 dark:text-blue-400">Total Assets</td>
-                <td class="px-5 py-2 text-right font-mono text-blue-700 dark:text-blue-400">${{ totalAssets.toLocaleString() }}</td>
-              </tr>
+                <tr class="bg-orange-50/50 dark:bg-orange-900/10">
+                  <td class="px-5 py-2 font-semibold text-orange-700 dark:text-orange-400" colspan="2">Liabilities</td>
+                </tr>
+                <tr
+                  v-for="item in balanceSheetData.liabilities"
+                  :key="item.name"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                >
+                  <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
+                </tr>
+                <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
+                  <td class="px-5 py-2 text-orange-700 dark:text-orange-400">Total Liabilities</td>
+                  <td class="px-5 py-2 text-right font-mono text-orange-700 dark:text-orange-400">${{ totalLiabilities.toLocaleString() }}</td>
+                </tr>
 
-              <tr class="bg-orange-50/50 dark:bg-orange-900/10">
-                <td class="px-5 py-2 font-semibold text-orange-700 dark:text-orange-400" colspan="2">Liabilities</td>
-              </tr>
-              <tr
-                v-for="item in balanceSheetData.liabilities"
-                :key="item.name"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-              >
-                <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
-              </tr>
-              <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
-                <td class="px-5 py-2 text-orange-700 dark:text-orange-400">Total Liabilities</td>
-                <td class="px-5 py-2 text-right font-mono text-orange-700 dark:text-orange-400">${{ totalLiabilities.toLocaleString() }}</td>
-              </tr>
-
-              <tr class="bg-purple-50/50 dark:bg-purple-900/10">
-                <td class="px-5 py-2 font-semibold text-purple-700 dark:text-purple-400" colspan="2">Owner's Equity</td>
-              </tr>
-              <tr
-                v-for="item in balanceSheetData.equity"
-                :key="item.name"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-              >
-                <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
-              </tr>
-              <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
-                <td class="px-5 py-2 text-purple-700 dark:text-purple-400">Total Equity</td>
-                <td class="px-5 py-2 text-right font-mono text-purple-700 dark:text-purple-400">${{ totalEquity.toLocaleString() }}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
-                <td class="px-5 py-3 text-slate-900 dark:text-stone-50">Total Liabilities + Equity</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ (totalLiabilities + totalEquity).toLocaleString() }}</td>
-              </tr>
-            </tfoot>
-          </table>
+                <tr class="bg-purple-50/50 dark:bg-purple-900/10">
+                  <td class="px-5 py-2 font-semibold text-purple-700 dark:text-purple-400" colspan="2">Owner's Equity</td>
+                </tr>
+                <tr
+                  v-for="item in balanceSheetData.equity"
+                  :key="item.name"
+                  class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                >
+                  <td class="px-5 py-3 pl-10 text-slate-700 dark:text-stone-200">{{ item.name }}</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
+                </tr>
+                <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
+                  <td class="px-5 py-2 text-purple-700 dark:text-purple-400">Total Equity</td>
+                  <td class="px-5 py-2 text-right font-mono text-purple-700 dark:text-purple-400">${{ totalEquity.toLocaleString() }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
+                  <td class="px-5 py-3 text-slate-900 dark:text-stone-50">Total Liabilities + Equity</td>
+                  <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ (totalLiabilities + totalEquity).toLocaleString() }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <!-- ═══════ Subject Modal ═══════ -->
     <Teleport to="body">

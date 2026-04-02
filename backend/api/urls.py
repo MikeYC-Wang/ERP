@@ -3,6 +3,10 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AccountSubjectViewSet,
+    DashboardExpenseBreakdownView,
+    DashboardMonthlyTrendView,
+    DashboardSummaryView,
+    DashboardTopProductsView,
     InventoryBatchViewSet,
     JournalVoucherItemViewSet,
     JournalVoucherViewSet,
@@ -26,4 +30,9 @@ router.register(r'order-items', OrderItemViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Dashboard APIs
+    path('dashboard/monthly-trend/', DashboardMonthlyTrendView.as_view(), name='dashboard-monthly-trend'),
+    path('dashboard/expense-breakdown/', DashboardExpenseBreakdownView.as_view(), name='dashboard-expense-breakdown'),
+    path('dashboard/top-products/', DashboardTopProductsView.as_view(), name='dashboard-top-products'),
+    path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard-summary'),
 ]

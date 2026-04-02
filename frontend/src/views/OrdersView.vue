@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { getOrders, shipOrder, completeOrder } from '@/api/orders'
+
+// ─── Loading ───
+const loading = ref(false)
 
 // ─── Types ───
 interface Order {
@@ -54,15 +58,61 @@ const filteredTotalAmount = computed(() =>
 )
 
 // ─── Actions ───
-function markAsShipped(id: number) {
+async function markAsShipped(id: number) {
+  try {
+    await shipOrder(id)
+  } catch (e) {
+    console.warn('Failed to ship order via API, applying locally', e)
+  }
   const order = orders.value.find((o) => o.id === id)
   if (order) order.status = 'shipped'
 }
 
-function markAsCompleted(id: number) {
+async function markAsCompleted(id: number) {
+  try {
+    await completeOrder(id)
+  } catch (e) {
+    console.warn('Failed to complete order via API, applying locally', e)
+  }
   const order = orders.value.find((o) => o.id === id)
   if (order) order.status = 'completed'
 }
+
+// ─── Load from API ───
+async function loadOrders() {
+  loading.value = true
+  try {
+    const res = await getOrders({ status: activeTab.value })
+    if (res?.data && Array.isArray(res.data)) {
+      // Replace only orders matching the current tab from API
+      const apiOrders: Order[] = res.data.map((o: Record<string, unknown>) => ({
+        id: o.id as number,
+        orderNumber: (o.order_number as string) || '',
+        customerName: (o.customer_name as string) || '',
+        date: (o.date as string) || '',
+        status: (o.status as Order['status']) || activeTab.value,
+        totalAmount: Number(o.total_amount) || 0,
+      }))
+      // Remove old orders of this status, add API ones
+      orders.value = [
+        ...orders.value.filter((o) => o.status !== activeTab.value),
+        ...apiOrders,
+      ]
+    }
+  } catch (e) {
+    console.warn('Orders API unavailable, using fallback data', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadOrders()
+})
+
+watch(activeTab, () => {
+  loadOrders()
+})
 </script>
 
 <template>
@@ -127,8 +177,13 @@ function markAsCompleted(id: number) {
       </nav>
     </div>
 
+    <!-- Loading Spinner -->
+    <div v-if="loading" class="flex items-center justify-center py-12">
+      <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-500"></i>
+    </div>
+
     <!-- Orders Table -->
-    <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+    <div v-else class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>

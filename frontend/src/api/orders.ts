@@ -27,6 +27,10 @@ export function createOrder(data: Partial<Order>): Promise<AxiosResponse> {
   return apiClient.post('orders/', data)
 }
 
+export function shipOrder(id: number): Promise<AxiosResponse> {
+  return apiClient.post(`orders/${id}/ship/`)
+}
+
 export function completeOrder(id: number): Promise<AxiosResponse> {
   return apiClient.post(`orders/${id}/complete/`)
 }
