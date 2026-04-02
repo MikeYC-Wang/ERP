@@ -10,3 +10,4 @@ __pycache__/
 
 # OS
 .DS_Storedb.sqlite3
+db.sqlite3
