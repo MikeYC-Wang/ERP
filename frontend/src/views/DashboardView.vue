@@ -89,16 +89,29 @@ const topProductsData = ref([
 ])
 
 // ─── ECharts Color Helpers ───
-const textColor = computed(() => themeStore.isDark ? '#e7e5e4' : '#1e293b')
-const axisLineColor = computed(() => themeStore.isDark ? '#475569' : '#cbd5e1')
+const textColor     = computed(() => themeStore.isDark ? '#F5E6D0' : '#1e293b')
+const axisLineColor = computed(() => themeStore.isDark ? '#4A3225' : '#cbd5e1')
+const tooltipBg     = computed(() => themeStore.isDark ? '#2E1E14' : '#ffffff')
+const tooltipBorder = computed(() => themeStore.isDark ? '#7A5240' : '#e2e8f0')
+
+// Series colours: in dark (milk-tea) mode use bright golden + cool teal so they
+// stand out against warm-brown backgrounds; keep amber/slate for light mode.
+const colorRevenue  = computed(() => themeStore.isDark ? '#F5C864' : '#f59e0b')
+const colorExpense  = computed(() => themeStore.isDark ? '#64B8C8' : '#94a3b8')
+const colorCost     = computed(() => themeStore.isDark ? '#64B8C8' : '#cbd5e1')
+const pieColors     = computed(() =>
+  themeStore.isDark
+    ? ['#F5C864', '#E88080', '#64C8B0', '#C0A0D8', '#F0A858']
+    : ['#f59e0b', '#fb923c', '#f87171', '#a8a29e', '#fbbf24']
+)
 
 // ─── Line Chart Option ───
 const trendOption = computed(() => ({
   backgroundColor: 'transparent',
   tooltip: {
     trigger: 'axis' as const,
-    backgroundColor: themeStore.isDark ? '#1e293b' : '#fff',
-    borderColor: themeStore.isDark ? '#475569' : '#e2e8f0',
+    backgroundColor: tooltipBg.value,
+    borderColor: tooltipBorder.value,
     textStyle: { color: textColor.value },
   },
   legend: {
@@ -136,9 +149,9 @@ const trendOption = computed(() => ({
       symbol: 'circle',
       symbolSize: 6,
       data: revenueData.value,
-      lineStyle: { color: '#f59e0b', width: 2 },
-      itemStyle: { color: '#f59e0b' },
-      areaStyle: { color: 'rgba(245, 158, 11, 0.15)' },
+      lineStyle: { color: colorRevenue.value, width: 2 },
+      itemStyle: { color: colorRevenue.value },
+      areaStyle: { color: themeStore.isDark ? 'rgba(245,200,100,0.12)' : 'rgba(245,158,11,0.15)' },
     },
     {
       name: '費用',
@@ -147,9 +160,9 @@ const trendOption = computed(() => ({
       symbol: 'circle',
       symbolSize: 6,
       data: expenseData.value,
-      lineStyle: { color: '#94a3b8', width: 2 },
-      itemStyle: { color: '#94a3b8' },
-      areaStyle: { color: 'rgba(148, 163, 184, 0.15)' },
+      lineStyle: { color: colorExpense.value, width: 2 },
+      itemStyle: { color: colorExpense.value },
+      areaStyle: { color: themeStore.isDark ? 'rgba(100,184,200,0.12)' : 'rgba(148,163,184,0.15)' },
     },
   ],
 }))
@@ -159,8 +172,8 @@ const expensePieOption = computed(() => ({
   backgroundColor: 'transparent',
   tooltip: {
     trigger: 'item' as const,
-    backgroundColor: themeStore.isDark ? '#1e293b' : '#fff',
-    borderColor: themeStore.isDark ? '#475569' : '#e2e8f0',
+    backgroundColor: tooltipBg.value,
+    borderColor: tooltipBorder.value,
     textStyle: { color: textColor.value },
     formatter: '{b}: ${c} ({d}%)',
   },
@@ -183,7 +196,7 @@ const expensePieOption = computed(() => ({
         fontSize: 11,
       },
       data: expenseBreakdownData.value,
-      color: ['#f59e0b', '#fb923c', '#f87171', '#a8a29e', '#fbbf24'],
+      color: pieColors.value,
     },
   ],
 }))
@@ -198,8 +211,8 @@ const barOption = computed(() => ({
   tooltip: {
     trigger: 'axis' as const,
     axisPointer: { type: 'shadow' as const },
-    backgroundColor: themeStore.isDark ? '#1e293b' : '#fff',
-    borderColor: themeStore.isDark ? '#475569' : '#e2e8f0',
+    backgroundColor: tooltipBg.value,
+    borderColor: tooltipBorder.value,
     textStyle: { color: textColor.value },
   },
   legend: {
@@ -233,14 +246,14 @@ const barOption = computed(() => ({
       name: '營收',
       type: 'bar' as const,
       data: topProductRevenues.value,
-      itemStyle: { color: '#f59e0b', borderRadius: [0, 3, 3, 0] },
+      itemStyle: { color: colorRevenue.value, borderRadius: [0, 3, 3, 0] },
       barGap: '10%',
     },
     {
       name: '成本',
       type: 'bar' as const,
       data: topProductCosts.value,
-      itemStyle: { color: '#cbd5e1', borderRadius: [0, 3, 3, 0] },
+      itemStyle: { color: colorCost.value, borderRadius: [0, 3, 3, 0] },
     },
   ],
 }))

@@ -11,10 +11,10 @@ defineEmits<{
 
 const menuItems = [
   { name: '儀表板', path: '/dashboard', icon: 'fa-solid fa-gauge-high' },
-  { name: '會計', path: '/accounting', icon: 'fa-solid fa-file-invoice-dollar' },
-  { name: '進銷存', path: '/inventory', icon: 'fa-solid fa-boxes-stacked' },
-  { name: '訂單', path: '/orders', icon: 'fa-solid fa-cart-shopping' },
-  { name: '設定', path: '/settings', icon: 'fa-solid fa-gear' },
+  { name: '會計',   path: '/accounting', icon: 'fa-solid fa-file-invoice-dollar' },
+  { name: '進銷存', path: '/inventory',  icon: 'fa-solid fa-boxes-stacked' },
+  { name: '訂單',   path: '/orders',     icon: 'fa-solid fa-cart-shopping' },
+  { name: '設定',   path: '/settings',   icon: 'fa-solid fa-gear' },
 ]
 
 const currentPath = computed(() => route.path)
@@ -25,25 +25,33 @@ function navigate(path: string) {
 </script>
 
 <template>
-  <aside
-    class="relative flex flex-col h-full w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700"
-  >
-    <!-- 左側漸層色帶 -->
-    <div class="absolute left-0 top-0 bottom-0 w-[3px] sidebar-gradient"></div>
+  <aside class="relative flex flex-col h-full w-64 glass border-r overflow-hidden"
+         style="border-color: var(--border-soft)">
 
-    <!-- Logo area -->
-    <div class="px-5 py-6 border-b border-slate-200 dark:border-slate-700">
+    <!-- Animated gradient strip on left edge -->
+    <div class="absolute left-0 top-0 bottom-0 w-[3px] sidebar-strip"></div>
+
+    <!-- Decorative glow blob inside sidebar -->
+    <div class="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none"
+         style="background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); filter: blur(24px)">
+    </div>
+
+    <!-- Logo -->
+    <div class="px-5 py-6 border-b" style="border-color: var(--border-soft)">
       <div class="flex items-center gap-3 group cursor-pointer">
-        <div
-          class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
-        >
-          <i class="fa-solid fa-paw text-amber-600 dark:text-amber-400 text-lg"></i>
+        <!-- Icon with animated glow -->
+        <div class="relative w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-110"
+             style="background: var(--bg-elevated); box-shadow: 0 0 16px var(--accent-glow)">
+          <i class="fa-solid fa-paw text-lg" style="color: var(--accent)"></i>
+          <!-- Pulse ring -->
+          <span class="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style="box-shadow: 0 0 0 3px var(--accent-glow); animation: none"></span>
         </div>
         <div>
-          <h1 class="text-lg font-bold text-slate-900 dark:text-stone-50 leading-tight">
+          <h1 class="font-display text-base font-bold leading-tight" style="color: var(--text-primary)">
             PerPetsStore
           </h1>
-          <p class="text-xs text-slate-500 dark:text-slate-400 italic">
+          <p class="text-[11px] italic" style="color: var(--text-muted)">
             Because They Deserve the Best.
           </p>
         </div>
@@ -56,33 +64,50 @@ function navigate(path: string) {
         v-for="item in menuItems"
         :key="item.path"
         @click="navigate(item.path); $emit('close')"
-        class="relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200"
-        :class="
-          currentPath === item.path
-            ? 'bg-gradient-to-r from-amber-100 to-orange-50 dark:from-amber-900/40 dark:to-orange-900/20 text-amber-700 dark:text-amber-300'
-            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-stone-50 hover:translate-x-1'
-        "
+        class="relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-250 group"
+        :class="currentPath === item.path ? 'nav-active' : 'nav-inactive'"
       >
-        <!-- 選中指示條 -->
+        <!-- Active glow backdrop -->
         <span
           v-if="currentPath === item.path"
-          class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full bg-amber-500"
+          class="absolute inset-0 rounded-xl opacity-100"
+          style="background: linear-gradient(135deg, var(--accent), var(--accent-cyan)); box-shadow: 0 4px 20px var(--accent-glow), 0 0 40px var(--accent-glow-cyan)"
         ></span>
-        <i
-          :class="item.icon"
-          class="w-5 text-center"
-        ></i>
-        <span>{{ item.name }}</span>
+
+        <i :class="item.icon" class="relative w-5 text-center text-base z-10"></i>
+        <span class="relative z-10">{{ item.name }}</span>
+
+        <!-- Active dot indicator -->
         <span
           v-if="currentPath === item.path"
-          class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-500"
+          class="relative z-10 ml-auto w-1.5 h-1.5 rounded-full"
+          style="background: white; box-shadow: 0 0 6px rgba(255,255,255,0.8)"
+        ></span>
+
+        <!-- Hover shimmer for inactive -->
+        <span
+          v-if="currentPath !== item.path"
+          class="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          style="background: var(--bg-elevated)"
         ></span>
       </button>
     </nav>
 
     <!-- Footer -->
-    <div class="px-5 py-4 border-t border-slate-200 dark:border-slate-700">
-      <p class="text-xs text-slate-400 dark:text-slate-500">v0.1.0</p>
+    <div class="px-5 py-4 border-t" style="border-color: var(--border-soft)">
+      <p class="text-xs" style="color: var(--text-muted)">v0.1.0</p>
     </div>
   </aside>
 </template>
+
+<style scoped>
+.nav-active {
+  color: white;
+}
+.nav-inactive {
+  color: var(--text-secondary);
+}
+.nav-inactive:hover {
+  color: var(--text-primary);
+}
+</style>
