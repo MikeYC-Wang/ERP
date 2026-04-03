@@ -7,6 +7,7 @@ export interface Product {
   name: string
   unit: string
   current_price: number
+  safety_stock?: number
 }
 
 export interface InventoryBatch {
@@ -64,4 +65,8 @@ export function createPurchaseOrder(data: Partial<PurchaseOrder>): Promise<Axios
 
 export function receivePurchaseOrder(id: number): Promise<AxiosResponse> {
   return apiClient.post(`purchase-orders/${id}/receive/`)
+}
+
+export function getStockSummary(): Promise<AxiosResponse> {
+  return apiClient.get('inventory/stock-summary/')
 }

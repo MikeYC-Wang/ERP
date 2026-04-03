@@ -32,6 +32,7 @@ from .serializers import (
     PurchaseApplyItemSerializer,
     PurchaseOrderSerializer,
 )
+from django.db.models import IntegerField
 from .services import complete_order, create_inventory_from_purchase
 
 
@@ -123,6 +124,34 @@ class OrderViewSet(viewsets.ModelViewSet):
 class OrderItemViewSet(viewsets.ModelViewSet):
     queryset = OrderItem.objects.all()
     serializer_class = OrderItemSerializer
+
+
+# ---------------------------------------------------------------------------
+# Inventory Stock Summary
+# ---------------------------------------------------------------------------
+
+class InventoryStockSummaryView(APIView):
+    """GET /api/inventory/stock-summary/  — 每個商品的庫存總量 (用於盤點+安全庫存警示)"""
+
+    def get(self, request):
+        products = Product.objects.all()
+        result = []
+        for product in products:
+            total_remaining = (
+                InventoryBatch.objects
+                .filter(product=product)
+                .aggregate(total=Coalesce(Sum('remaining_quantity'), Value(0, output_field=IntegerField())))
+            )['total']
+            result.append({
+                'id': product.id,
+                'sku': product.sku,
+                'name': product.name,
+                'unit': product.unit,
+                'safety_stock': product.safety_stock,
+                'total_remaining': total_remaining,
+                'is_low': total_remaining < product.safety_stock,
+            })
+        return Response(result)
 
 
 # ---------------------------------------------------------------------------

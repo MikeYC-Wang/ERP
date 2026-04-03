@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 import {
   getAccountSubjects,
   createAccountSubject,
@@ -7,6 +10,7 @@ import {
   deleteAccountSubject as apiDeleteSubject,
   getJournalVouchers,
   createJournalVoucher,
+  deleteJournalVoucher,
 } from '@/api/accounting'
 
 // ─── Loading ───
@@ -141,6 +145,16 @@ const viewingVoucher = ref<JournalVoucher | null>(null)
 function openViewVoucher(voucher: JournalVoucher) {
   viewingVoucher.value = voucher
   showViewModal.value = true
+}
+
+async function deleteVoucher(voucher: JournalVoucher) {
+  if (!confirm(`確定刪除傳票「${voucher.voucherNumber}」？此操作無法復原。`)) return
+  try {
+    await deleteJournalVoucher(voucher.id)
+    vouchers.value = vouchers.value.filter((v) => v.id !== voucher.id)
+  } catch (e) {
+    alert('刪除失敗，請確認此傳票非系統自動產生。')
+  }
 }
 
 const filteredVouchers = computed(() => {
@@ -374,6 +388,74 @@ const totalLiabilities = computed(
 const totalEquity = computed(
   () => balanceSheetData.value.equity.reduce((s, e) => s + e.amount, 0),
 )
+
+// ─── 匯出功能 ───
+const reportTableRef = ref<HTMLElement | null>(null)
+
+function exportExcel() {
+  const periodLabel = selectedReportMonth.value === 0
+    ? `${selectedReportYear.value}全年`
+    : `${selectedReportYear.value}-${String(selectedReportMonth.value).padStart(2,'0')}`
+
+  const wb = XLSX.utils.book_new()
+
+  // 試算表
+  const trialRows = [
+    ['科目名稱', '借方餘額', '貸方餘額'],
+    ...trialBalanceData.value.map((r) => [r.name, r.debit || 0, r.credit || 0]),
+    ['合計',
+      trialBalanceData.value.reduce((s, r) => s + r.debit, 0),
+      trialBalanceData.value.reduce((s, r) => s + r.credit, 0),
+    ],
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(trialRows), '試算表')
+
+  // 損益表
+  const incomeRows = [
+    ['項目', '金額'],
+    ['--- 收入 ---', ''],
+    ...incomeStatementData.value.revenue.map((r) => [r.name, r.amount]),
+    ['總收入', incomeTotal.value],
+    ['--- 費用 ---', ''],
+    ...incomeStatementData.value.expenses.map((e) => [e.name, e.amount]),
+    ['總費用', expenseTotal.value],
+    ['本期淨利', netIncome.value],
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incomeRows), '損益表')
+
+  // 資產負債表
+  const balanceRows = [
+    ['項目', '金額'],
+    ['--- 資產 ---', ''],
+    ...balanceSheetData.value.assets.map((a) => [a.name, a.amount]),
+    ['資產合計', totalAssets.value],
+    ['--- 負債 ---', ''],
+    ...balanceSheetData.value.liabilities.map((l) => [l.name, l.amount]),
+    ['負債合計', totalLiabilities.value],
+    ['--- 投入 ---', ''],
+    ...balanceSheetData.value.equity.map((e) => [e.name, e.amount]),
+    ['投入合計', totalEquity.value],
+    ['負債及投入總計', totalLiabilities.value + totalEquity.value],
+  ]
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(balanceRows), '資產負債表')
+
+  XLSX.writeFile(wb, `財務報表_${periodLabel}.xlsx`)
+}
+
+async function exportPDF() {
+  const el = reportTableRef.value
+  if (!el) return
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' })
+  const imgData = canvas.toDataURL('image/png')
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const pdfW = pdf.internal.pageSize.getWidth()
+  const pdfH = (canvas.height * pdfW) / canvas.width
+  pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH)
+  const periodLabel = selectedReportMonth.value === 0
+    ? `${selectedReportYear.value}全年`
+    : `${selectedReportYear.value}-${String(selectedReportMonth.value).padStart(2,'0')}`
+  pdf.save(`財務報表_${periodLabel}.pdf`)
+}
 
 // ─── Load from API ───
 onMounted(async () => {
@@ -614,8 +696,15 @@ onMounted(async () => {
                       </span>
                     </td>
                     <td class="px-5 py-3 text-right">
-                      <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="openViewVoucher(voucher)">
+                      <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all mr-1" @click="openViewVoucher(voucher)">
                         <i class="fa-solid fa-eye"></i> 檢視
+                      </button>
+                      <button
+                        v-if="!voucher.isSystemGenerated"
+                        class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-red-400 to-rose-500 hover:from-red-500 hover:to-rose-600 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+                        @click="deleteVoucher(voucher)"
+                      >
+                        <i class="fa-solid fa-trash"></i> 刪除
                       </button>
                     </td>
                   </tr>
@@ -702,9 +791,22 @@ onMounted(async () => {
               >
                 <option v-for="m in months" :key="m.value" :value="m.value">{{ m.label }}</option>
               </select>
+              <button
+                @click="exportExcel"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+              >
+                <i class="fa-solid fa-file-excel"></i> Excel
+              </button>
+              <button
+                @click="exportPDF"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+              >
+                <i class="fa-solid fa-file-pdf"></i> PDF
+              </button>
             </div>
           </div>
 
+          <div ref="reportTableRef">
           <!-- Trial Balance -->
           <div v-if="activeReport === 'trial'" class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-amber-400">
             <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
@@ -871,6 +973,7 @@ onMounted(async () => {
               </table>
             </div>
           </div>
+          </div><!-- /reportTableRef -->
         </div>
       </Transition>
     </template>

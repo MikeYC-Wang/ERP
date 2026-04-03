@@ -8,6 +8,7 @@ from .views import (
     DashboardSummaryView,
     DashboardTopProductsView,
     InventoryBatchViewSet,
+    InventoryStockSummaryView,
     JournalVoucherItemViewSet,
     JournalVoucherViewSet,
     OrderItemViewSet,
@@ -30,6 +31,8 @@ router.register(r'order-items', OrderItemViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Inventory Stock Summary
+    path('inventory/stock-summary/', InventoryStockSummaryView.as_view(), name='inventory-stock-summary'),
     # Dashboard APIs
     path('dashboard/monthly-trend/', DashboardMonthlyTrendView.as_view(), name='dashboard-monthly-trend'),
     path('dashboard/expense-breakdown/', DashboardExpenseBreakdownView.as_view(), name='dashboard-expense-breakdown'),

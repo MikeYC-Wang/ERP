@@ -30,13 +30,31 @@ class JournalVoucherItemSerializer(serializers.ModelSerializer):
 
 class JournalVoucherSerializer(serializers.ModelSerializer):
     items = JournalVoucherItemSerializer(many=True, required=False)
+    voucher_number = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = JournalVoucher
         fields = '__all__'
 
+    @staticmethod
+    def _generate_voucher_number(date):
+        """產生 JV-YYYYMM-NNN 格式編號，自動遞增"""
+        prefix = f"JV-{date.strftime('%Y%m')}-"
+        last = (
+            JournalVoucher.objects
+            .filter(voucher_number__startswith=prefix)
+            .order_by('-voucher_number')
+            .values_list('voucher_number', flat=True)
+            .first()
+        )
+        seq = int(last.split('-')[-1]) + 1 if last else 1
+        return f"{prefix}{str(seq).zfill(3)}"
+
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        if not validated_data.get('voucher_number'):
+            date = validated_data.get('date')
+            validated_data['voucher_number'] = self._generate_voucher_number(date)
         voucher = JournalVoucher.objects.create(**validated_data)
         for item_data in items_data:
             item_data.pop('voucher', None)

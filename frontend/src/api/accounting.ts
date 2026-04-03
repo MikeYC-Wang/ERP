@@ -46,3 +46,7 @@ export function getJournalVouchers(params?: Record<string, unknown>): Promise<Ax
 export function createJournalVoucher(data: Partial<JournalVoucher>): Promise<AxiosResponse> {
   return apiClient.post('journal-vouchers/', data)
 }
+
+export function deleteJournalVoucher(id: number): Promise<AxiosResponse> {
+  return apiClient.delete(`journal-vouchers/${id}/`)
+}

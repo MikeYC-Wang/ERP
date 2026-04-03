@@ -80,6 +80,7 @@ class Product(models.Model):
     sku = models.CharField('SKU 編號', max_length=50, unique=True)
     unit = models.CharField('單位', max_length=20, default='個')
     current_price = models.DecimalField('目前售價', max_digits=12, decimal_places=2, default=0)
+    safety_stock = models.PositiveIntegerField('安全庫存量', default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
