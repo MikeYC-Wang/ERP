@@ -126,6 +126,15 @@ const selectedJournalYear = ref(currentYear)
 
 const vouchers = ref<JournalVoucher[]>([])
 
+// ─── 傳票檢視 Modal ───
+const showViewModal = ref(false)
+const viewingVoucher = ref<JournalVoucher | null>(null)
+
+function openViewVoucher(voucher: JournalVoucher) {
+  viewingVoucher.value = voucher
+  showViewModal.value = true
+}
+
 const filteredVouchers = computed(() => {
   return vouchers.value.filter((v) => v.date.startsWith(String(selectedJournalYear.value)))
 })
@@ -226,6 +235,11 @@ async function saveVoucher() {
 const activeReport = ref<'trial' | 'income' | 'balance'>('trial')
 const selectedReportYear = ref(currentYear)
 
+// ─── 財務報表：依年份過濾 ───
+const reportVouchers = computed(() =>
+  vouchers.value.filter((v) => v.date.startsWith(String(selectedReportYear.value)))
+)
+
 // ─── 財務報表：從傳票明細動態彙算 ───
 const subjectNameMap = computed(() => {
   const m: Record<string, string> = {}
@@ -242,7 +256,7 @@ const subjectCategoryMap = computed(() => {
 const trialBalanceData = computed(() => {
   // 先彙算每科目的發生額合計
   const gross: Record<string, { name: string; totalDebit: number; totalCredit: number }> = {}
-  vouchers.value.forEach((v) => {
+  reportVouchers.value.forEach((v) => {
     v.entries.forEach((e) => {
       const name = subjectNameMap.value[e.accountSubject] || `科目#${e.accountSubject}`
       if (!gross[e.accountSubject]) gross[e.accountSubject] = { name, totalDebit: 0, totalCredit: 0 }
@@ -265,7 +279,7 @@ const incomeStatementData = computed(() => {
   const revenue: { name: string; amount: number }[] = []
   const expenses: { name: string; amount: number }[] = []
   const totals: Record<string, number> = {}
-  vouchers.value.forEach((v) => {
+  reportVouchers.value.forEach((v) => {
     v.entries.forEach((e) => {
       const net = e.creditAmount - e.debitAmount
       if (!totals[e.accountSubject]) totals[e.accountSubject] = 0
@@ -293,9 +307,9 @@ const balanceSheetData = computed(() => {
   const assets: { name: string; amount: number }[] = []
   const liabilities: { name: string; amount: number }[] = []
   const equity: { name: string; amount: number }[] = []
-  // 先彙算傳票
+  // 先彙算傳票（依選定年份）
   const totals: Record<string, number> = {}
-  vouchers.value.forEach((v) => {
+  reportVouchers.value.forEach((v) => {
     v.entries.forEach((e) => {
       if (!totals[e.accountSubject]) totals[e.accountSubject] = 0
       totals[e.accountSubject] += (e.debitAmount - e.creditAmount)
@@ -556,7 +570,7 @@ onMounted(async () => {
                       </span>
                     </td>
                     <td class="px-5 py-3 text-right">
-                      <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all">
+                      <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="openViewVoucher(voucher)">
                         <i class="fa-solid fa-eye"></i> 檢視
                       </button>
                     </td>
@@ -986,6 +1000,92 @@ onMounted(async () => {
                 @click="saveVoucher"
               >
                 儲存
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- View Voucher Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showViewModal && viewingVoucher" class="fixed inset-0 z-50 flex items-center justify-center">
+          <div class="absolute inset-0 bg-black/40" @click="showViewModal = false"></div>
+          <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-xl mx-4 p-6 modal-enter-active">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-5">
+              <div>
+                <h3 class="text-base font-semibold text-slate-900 dark:text-stone-50">{{ viewingVoucher.voucherNumber }}</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ viewingVoucher.date }}　{{ viewingVoucher.description }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span
+                  v-if="viewingVoucher.isSystemGenerated"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                >
+                  <i class="fa-solid fa-gear mr-1 text-[10px]"></i> 系統自動
+                </span>
+                <span
+                  v-else
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                >
+                  <i class="fa-solid fa-user mr-1 text-[10px]"></i> 手動
+                </span>
+                <button class="text-slate-400 hover:text-slate-600 dark:hover:text-stone-200 ml-1" @click="showViewModal = false">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Entries Table -->
+            <div class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-gray-800 dark:to-slate-800 border-b border-slate-200 dark:border-slate-700">
+                    <th class="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 dark:text-slate-400">科目</th>
+                    <th class="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 dark:text-slate-400">借方</th>
+                    <th class="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 dark:text-slate-400">貸方</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(entry, i) in viewingVoucher.entries"
+                    :key="i"
+                    class="border-b border-slate-100 dark:border-slate-700/50 last:border-0"
+                    :class="i % 2 === 1 ? 'bg-orange-50/30 dark:bg-gray-800/50' : ''"
+                  >
+                    <td class="px-4 py-2.5 text-slate-700 dark:text-stone-200">
+                      {{ subjectNameMap[entry.accountSubject] || `科目#${entry.accountSubject}` }}
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-700 dark:text-stone-200">
+                      {{ entry.debitAmount ? `$${Number(entry.debitAmount).toLocaleString()}` : '-' }}
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-700 dark:text-stone-200">
+                      {{ entry.creditAmount ? `$${Number(entry.creditAmount).toLocaleString()}` : '-' }}
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-semibold bg-slate-50 dark:bg-slate-800/80">
+                    <td class="px-4 py-2.5 text-slate-700 dark:text-stone-200">合計</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-700 dark:text-stone-200">
+                      ${{ viewingVoucher.entries.reduce((s, e) => s + Number(e.debitAmount), 0).toLocaleString() }}
+                    </td>
+                    <td class="px-4 py-2.5 text-right font-mono text-slate-700 dark:text-stone-200">
+                      ${{ viewingVoucher.entries.reduce((s, e) => s + Number(e.creditAmount), 0).toLocaleString() }}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div class="flex justify-end mt-5">
+              <button
+                class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+                @click="showViewModal = false"
+              >
+                關閉
               </button>
             </div>
           </div>
