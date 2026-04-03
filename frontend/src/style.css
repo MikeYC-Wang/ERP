@@ -13,3 +13,79 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ─── 漸層按鈕 ─── */
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-amber-400 to-orange-500 text-white font-medium rounded-lg
+           hover:from-amber-500 hover:to-orange-600 transition-all duration-300
+           shadow-md hover:shadow-lg hover:-translate-y-0.5;
+  }
+  .btn-danger {
+    @apply bg-gradient-to-r from-red-400 to-rose-500 text-white font-medium rounded-lg
+           hover:from-red-500 hover:to-rose-600 transition-all duration-300;
+  }
+  .btn-success {
+    @apply bg-gradient-to-r from-emerald-400 to-teal-500 text-white font-medium rounded-lg
+           hover:from-emerald-500 hover:to-teal-600 transition-all duration-300;
+  }
+
+  /* 卡片動畫 */
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+  }
+}
+
+/* ─── 淡入動畫 ─── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* 交錯淡入 */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+
+/* ─── 側邊欄漸層條 ─── */
+.sidebar-gradient {
+  background: linear-gradient(180deg, #f59e0b, #f97316, #fb7185);
+}
+
+/* ─── Loading 脈動效果 ─── */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.4; }
+  100% { transform: scale(0.8); opacity: 1; }
+}
+.loading-pulse {
+  animation: pulse-ring 1.4s ease-in-out infinite;
+}
+
+/* ─── Modal 進入動畫 ─── */
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.9) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-enter-active {
+  animation: modalIn 0.25s ease-out forwards;
+}
+@keyframes modalOut {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.9) translateY(10px); }
+}
+.modal-leave-active {
+  animation: modalOut 0.2s ease-in forwards;
+}
+
+/* ─── 主題切換旋轉 ─── */
+.theme-icon-rotate {
+  transition: transform 0.4s ease;
+}
+.theme-icon-rotate.rotated {
+  transform: rotate(180deg);
+}

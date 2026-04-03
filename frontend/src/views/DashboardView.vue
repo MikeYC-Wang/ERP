@@ -30,28 +30,37 @@ const loading = ref(false)
 // ─── Metrics ───
 const metrics = ref([
   {
-    label: 'Total Revenue',
+    label: '總營收',
     value: '$128,430',
     change: '+12.5%',
     positive: true,
     icon: 'fa-solid fa-dollar-sign',
     changeIcon: 'fa-solid fa-arrow-up-right',
+    borderColor: 'border-emerald-400',
+    iconBg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    iconColor: 'text-emerald-500',
   },
   {
-    label: 'Total Expenses',
+    label: '總費用',
     value: '$84,210',
     change: '+3.2%',
     positive: false,
     icon: 'fa-solid fa-receipt',
     changeIcon: 'fa-solid fa-arrow-down-left',
+    borderColor: 'border-orange-400',
+    iconBg: 'bg-orange-100 dark:bg-orange-900/30',
+    iconColor: 'text-orange-500',
   },
   {
-    label: 'Net Profit',
+    label: '淨利潤',
     value: '$44,220',
     change: '+18.7%',
     positive: true,
     icon: 'fa-solid fa-chart-line',
     changeIcon: 'fa-solid fa-arrow-up-right',
+    borderColor: 'border-violet-400',
+    iconBg: 'bg-violet-100 dark:bg-violet-900/30',
+    iconColor: 'text-violet-500',
   },
 ])
 
@@ -64,19 +73,19 @@ const revenueData = ref([12400, 15200, 13800, 16500, 14200, 18300, 17100, 19800,
 const expenseData = ref([8200, 9100, 7800, 10200, 8600, 11400, 9800, 11200, 8900, 12000, 9500, 10800])
 
 const expenseBreakdownData = ref([
-  { value: 50000, name: 'COGS' },
-  { value: 12000, name: 'Shipping' },
-  { value: 8000, name: 'Packaging' },
-  { value: 6000, name: 'Marketing' },
-  { value: 4000, name: 'Other' },
+  { value: 50000, name: '銷貨成本' },
+  { value: 12000, name: '運費' },
+  { value: 8000, name: '包裝費' },
+  { value: 6000, name: '行銷費' },
+  { value: 4000, name: '其他' },
 ])
 
 const topProductsData = ref([
-  { name: 'Premium Dog Food 5kg', revenue: 18500, cost: 12000 },
-  { name: 'Aquarium Starter Kit', revenue: 14200, cost: 8800 },
-  { name: 'Cat Toy Mouse Set', revenue: 11800, cost: 5900 },
-  { name: 'Dog Leash Nylon', revenue: 9600, cost: 5100 },
-  { name: 'Bird Treat Mix 500g', revenue: 7400, cost: 4200 },
+  { name: '高級狗糧 5kg', revenue: 18500, cost: 12000 },
+  { name: '水族箱入門組', revenue: 14200, cost: 8800 },
+  { name: '貓咪玩具鼠組', revenue: 11800, cost: 5900 },
+  { name: '尼龍狗牽繩', revenue: 9600, cost: 5100 },
+  { name: '鳥類綜合點心 500g', revenue: 7400, cost: 4200 },
 ])
 
 // ─── ECharts Color Helpers ───
@@ -93,7 +102,7 @@ const trendOption = computed(() => ({
     textStyle: { color: textColor.value },
   },
   legend: {
-    data: ['Revenue', 'Expenses'],
+    data: ['營收', '費用'],
     top: 0,
     textStyle: { color: textColor.value },
   },
@@ -121,7 +130,7 @@ const trendOption = computed(() => ({
   },
   series: [
     {
-      name: 'Revenue',
+      name: '營收',
       type: 'line' as const,
       smooth: true,
       symbol: 'circle',
@@ -132,7 +141,7 @@ const trendOption = computed(() => ({
       areaStyle: { color: 'rgba(245, 158, 11, 0.15)' },
     },
     {
-      name: 'Expenses',
+      name: '費用',
       type: 'line' as const,
       smooth: true,
       symbol: 'circle',
@@ -194,7 +203,7 @@ const barOption = computed(() => ({
     textStyle: { color: textColor.value },
   },
   legend: {
-    data: ['Revenue', 'Cost'],
+    data: ['營收', '成本'],
     top: 0,
     textStyle: { color: textColor.value, fontSize: 11 },
   },
@@ -221,14 +230,14 @@ const barOption = computed(() => ({
   },
   series: [
     {
-      name: 'Revenue',
+      name: '營收',
       type: 'bar' as const,
       data: topProductRevenues.value,
       itemStyle: { color: '#f59e0b', borderRadius: [0, 3, 3, 0] },
       barGap: '10%',
     },
     {
-      name: 'Cost',
+      name: '成本',
       type: 'bar' as const,
       data: topProductCosts.value,
       itemStyle: { color: '#cbd5e1', borderRadius: [0, 3, 3, 0] },
@@ -240,36 +249,36 @@ const barOption = computed(() => ({
 const journalEntries = [
   {
     date: '2026-03-28',
-    account: 'Sales Revenue',
-    description: 'Premium dog food bulk order',
+    account: '商品銷售收入',
+    description: '高級狗糧大量訂單',
     debit: '',
     credit: '$4,250.00',
   },
   {
     date: '2026-03-27',
-    account: 'Cost of Goods Sold',
-    description: 'Inventory restock - cat toys',
+    account: '銷貨成本',
+    description: '貓咪玩具補貨',
     debit: '$1,820.00',
     credit: '',
   },
   {
     date: '2026-03-26',
-    account: 'Accounts Receivable',
-    description: 'Invoice #1042 - PetMart Ltd.',
+    account: '應收帳款',
+    description: '發票 #1042 - PetMart Ltd.',
     debit: '$3,600.00',
     credit: '',
   },
   {
     date: '2026-03-25',
-    account: 'Rent Expense',
-    description: 'Monthly warehouse rental',
+    account: '租金費用',
+    description: '每月倉庫租金',
     debit: '$2,500.00',
     credit: '',
   },
   {
     date: '2026-03-24',
-    account: 'Sales Revenue',
-    description: 'Online store daily settlement',
+    account: '商品銷售收入',
+    description: '網路商店每日結算',
     debit: '',
     credit: '$6,780.00',
   },
@@ -323,16 +332,23 @@ onMounted(async () => {
       v-if="loading"
       class="flex items-center justify-center py-12"
     >
-      <i class="fa-solid fa-spinner fa-spin text-2xl text-amber-500"></i>
+      <div class="flex flex-col items-center gap-3">
+        <div class="relative w-12 h-12">
+          <div class="absolute inset-0 rounded-full border-4 border-amber-200 dark:border-amber-900/40"></div>
+          <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-amber-500 loading-pulse"></div>
+        </div>
+        <span class="text-sm text-slate-500 dark:text-slate-400">載入中...</span>
+      </div>
     </div>
 
     <template v-else>
       <!-- Metric Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div
-          v-for="metric in metrics"
+          v-for="(metric, idx) in metrics"
           :key="metric.label"
-          class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5"
+          class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 border-l-4 card-hover animate-fade-in-up opacity-0"
+          :class="[metric.borderColor, `stagger-${idx + 1}`]"
         >
           <div class="flex items-center justify-between mb-3">
             <span class="text-sm font-medium text-slate-500 dark:text-slate-400">
@@ -340,23 +356,16 @@ onMounted(async () => {
             </span>
             <div
               class="w-9 h-9 rounded-lg flex items-center justify-center"
-              :class="
-                metric.positive
-                  ? 'bg-emerald-50 dark:bg-emerald-900/30'
-                  : 'bg-red-50 dark:bg-red-900/30'
-              "
+              :class="metric.iconBg"
             >
               <i
-                :class="metric.icon"
+                :class="[metric.icon, metric.iconColor]"
                 class="text-sm"
-                :style="{
-                  color: metric.positive ? 'rgb(16 185 129)' : 'rgb(239 68 68)',
-                }"
               ></i>
             </div>
           </div>
 
-          <p class="text-2xl font-bold text-slate-900 dark:text-stone-50 mb-1">
+          <p class="text-2xl font-bold text-slate-900 dark:text-stone-50 mb-1 font-mono">
             {{ metric.value }}
           </p>
 
@@ -377,7 +386,7 @@ onMounted(async () => {
             >
               {{ metric.change }}
             </span>
-            <span class="text-slate-400 dark:text-slate-500">vs last month</span>
+            <span class="text-slate-400 dark:text-slate-500">較上月</span>
           </div>
         </div>
       </div>
@@ -386,12 +395,12 @@ onMounted(async () => {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <!-- Revenue & Expense Trend -->
         <div
-          class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5"
+          class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 card-hover animate-fade-in-up opacity-0 stagger-2"
         >
           <div class="flex items-center gap-2 mb-4">
             <i class="fa-solid fa-chart-area text-amber-500"></i>
             <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">
-              Revenue &amp; Expense Trend
+              營收與費用趨勢
             </h2>
           </div>
           <v-chart
@@ -405,12 +414,12 @@ onMounted(async () => {
         <div class="flex flex-col gap-4">
           <!-- Expense Breakdown Doughnut -->
           <div
-            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5"
+            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 card-hover animate-fade-in-up opacity-0 stagger-3"
           >
             <div class="flex items-center gap-2 mb-4">
               <i class="fa-solid fa-chart-pie text-amber-500"></i>
               <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">
-                Expense Breakdown
+                費用結構分析
               </h2>
             </div>
             <v-chart
@@ -422,12 +431,12 @@ onMounted(async () => {
 
           <!-- Top Products Bar -->
           <div
-            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5"
+            class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 card-hover animate-fade-in-up opacity-0 stagger-4"
           >
             <div class="flex items-center gap-2 mb-4">
               <i class="fa-solid fa-ranking-star text-amber-500"></i>
               <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">
-                Top Products by Gross Profit
+                熱銷商品毛利排行
               </h2>
             </div>
             <v-chart
@@ -441,12 +450,12 @@ onMounted(async () => {
 
       <!-- Recent Journal Entries -->
       <div
-        class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm"
+        class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm card-hover animate-fade-in-up opacity-0 stagger-4"
       >
         <div class="flex items-center gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-700">
           <i class="fa-solid fa-book text-amber-500"></i>
           <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">
-            Recent Journal Entries
+            最近傳票記錄
           </h2>
         </div>
 
@@ -457,27 +466,27 @@ onMounted(async () => {
                 <th
                   class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
                 >
-                  Date
+                  日期
                 </th>
                 <th
                   class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
                 >
-                  Account
+                  科目
                 </th>
                 <th
                   class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
                 >
-                  Description
+                  摘要
                 </th>
                 <th
                   class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
                 >
-                  Debit
+                  借方
                 </th>
                 <th
                   class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
                 >
-                  Credit
+                  貸方
                 </th>
               </tr>
             </thead>
@@ -485,7 +494,7 @@ onMounted(async () => {
               <tr
                 v-for="(entry, index) in journalEntries"
                 :key="index"
-                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200 hover:translate-x-1"
                 :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
               >
                 <td class="px-5 py-3 text-slate-600 dark:text-slate-300 font-mono text-xs">

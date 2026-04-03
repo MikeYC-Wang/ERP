@@ -1,21 +1,29 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useThemeStore } from '../../stores/theme'
 
 const route = useRoute()
 const themeStore = useThemeStore()
 
+const rotated = ref(false)
+
 defineEmits<{
   (e: 'toggle-sidebar'): void
 }>()
 
-const pageTitle = computed(() => (route.meta.title as string) || 'Dashboard')
+const pageTitle = computed(() => (route.meta.title as string) || '儀表板')
+
+function handleToggleTheme() {
+  rotated.value = !rotated.value
+  themeStore.toggleTheme()
+}
 </script>
 
 <template>
   <header
     class="h-16 flex items-center justify-between px-4 sm:px-6 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700"
+    style="box-shadow: 0 1px 0 0 rgba(245,158,11,0.15)"
   >
     <!-- Left: hamburger + breadcrumb -->
     <div class="flex items-center gap-3">
@@ -32,6 +40,7 @@ const pageTitle = computed(() => (route.meta.title as string) || 'Dashboard')
       <nav class="flex items-center gap-2 text-sm">
         <span class="text-slate-400 dark:text-slate-500">
           <i class="fa-solid fa-house text-xs"></i>
+          <span class="ml-1">首頁</span>
         </span>
         <span class="text-slate-300 dark:text-slate-600">/</span>
         <span class="font-medium text-slate-700 dark:text-stone-200">{{ pageTitle }}</span>
@@ -42,13 +51,13 @@ const pageTitle = computed(() => (route.meta.title as string) || 'Dashboard')
     <div class="flex items-center gap-3">
       <!-- Theme toggle -->
       <button
-        @click="themeStore.toggleTheme()"
+        @click="handleToggleTheme"
         class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400 transition-colors"
         :aria-label="themeStore.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
       >
         <i
-          :class="themeStore.isDark ? 'fa-solid fa-sun text-amber-400' : 'fa-solid fa-moon text-slate-500'"
-          class="text-lg"
+          class="text-lg theme-icon-rotate"
+          :class="[themeStore.isDark ? 'fa-solid fa-sun text-amber-400' : 'fa-solid fa-moon text-slate-500', { rotated }]"
         ></i>
       </button>
 

@@ -18,29 +18,29 @@ interface Order {
 // ─── Data ───
 const orders = ref<Order[]>([
   // Pending (4)
-  { id: 1, orderNumber: 'ORD-2026-001', customerName: 'PetMart Ltd.', date: '2026-03-28', status: 'pending', totalAmount: 4250.00 },
-  { id: 2, orderNumber: 'ORD-2026-002', customerName: 'Happy Paws Shop', date: '2026-03-27', status: 'pending', totalAmount: 1820.00 },
-  { id: 3, orderNumber: 'ORD-2026-003', customerName: 'Aqua World', date: '2026-03-26', status: 'pending', totalAmount: 3600.00 },
-  { id: 4, orderNumber: 'ORD-2026-004', customerName: 'Feathered Friends', date: '2026-03-25', status: 'pending', totalAmount: 950.00 },
+  { id: 1, orderNumber: 'ORD-2026-001', customerName: '寵物超市有限公司', date: '2026-03-28', status: 'pending', totalAmount: 4250.00 },
+  { id: 2, orderNumber: 'ORD-2026-002', customerName: '歡樂爪子寵物店', date: '2026-03-27', status: 'pending', totalAmount: 1820.00 },
+  { id: 3, orderNumber: 'ORD-2026-003', customerName: '水世界水族館', date: '2026-03-26', status: 'pending', totalAmount: 3600.00 },
+  { id: 4, orderNumber: 'ORD-2026-004', customerName: '羽之友鳥園', date: '2026-03-25', status: 'pending', totalAmount: 950.00 },
   // Shipped (3)
-  { id: 5, orderNumber: 'ORD-2026-005', customerName: 'Pet Paradise', date: '2026-03-22', status: 'shipped', totalAmount: 6780.00 },
-  { id: 6, orderNumber: 'ORD-2026-006', customerName: 'Animal Kingdom', date: '2026-03-20', status: 'shipped', totalAmount: 2340.00 },
-  { id: 7, orderNumber: 'ORD-2026-007', customerName: 'Bark & Purr Co.', date: '2026-03-18', status: 'shipped', totalAmount: 5100.00 },
+  { id: 5, orderNumber: 'ORD-2026-005', customerName: '寵物天堂', date: '2026-03-22', status: 'shipped', totalAmount: 6780.00 },
+  { id: 6, orderNumber: 'ORD-2026-006', customerName: '動物王國', date: '2026-03-20', status: 'shipped', totalAmount: 2340.00 },
+  { id: 7, orderNumber: 'ORD-2026-007', customerName: '汪喵生活館', date: '2026-03-18', status: 'shipped', totalAmount: 5100.00 },
   // Completed (5)
-  { id: 8, orderNumber: 'ORD-2026-008', customerName: 'PetMart Ltd.', date: '2026-03-10', status: 'completed', totalAmount: 3200.00 },
-  { id: 9, orderNumber: 'ORD-2026-009', customerName: 'Happy Paws Shop', date: '2026-03-08', status: 'completed', totalAmount: 1450.00 },
-  { id: 10, orderNumber: 'ORD-2026-010', customerName: 'Aqua World', date: '2026-03-05', status: 'completed', totalAmount: 7800.00 },
-  { id: 11, orderNumber: 'ORD-2026-011', customerName: 'Pet Paradise', date: '2026-03-01', status: 'completed', totalAmount: 2100.00 },
-  { id: 12, orderNumber: 'ORD-2026-012', customerName: 'Animal Kingdom', date: '2026-02-28', status: 'completed', totalAmount: 4500.00 },
+  { id: 8, orderNumber: 'ORD-2026-008', customerName: '寵物超市有限公司', date: '2026-03-10', status: 'completed', totalAmount: 3200.00 },
+  { id: 9, orderNumber: 'ORD-2026-009', customerName: '歡樂爪子寵物店', date: '2026-03-08', status: 'completed', totalAmount: 1450.00 },
+  { id: 10, orderNumber: 'ORD-2026-010', customerName: '水世界水族館', date: '2026-03-05', status: 'completed', totalAmount: 7800.00 },
+  { id: 11, orderNumber: 'ORD-2026-011', customerName: '寵物天堂', date: '2026-03-01', status: 'completed', totalAmount: 2100.00 },
+  { id: 12, orderNumber: 'ORD-2026-012', customerName: '動物王國', date: '2026-02-28', status: 'completed', totalAmount: 4500.00 },
 ])
 
 // ─── Tab State ───
 const activeTab = ref<'pending' | 'shipped' | 'completed'>('pending')
 
 const tabs = [
-  { key: 'pending' as const, label: 'Pending', icon: 'fa-solid fa-clock' },
-  { key: 'shipped' as const, label: 'Shipped', icon: 'fa-solid fa-truck' },
-  { key: 'completed' as const, label: 'Completed', icon: 'fa-solid fa-circle-check' },
+  { key: 'pending' as const, label: '待出貨', icon: 'fa-solid fa-clock' },
+  { key: 'shipped' as const, label: '已出貨', icon: 'fa-solid fa-truck' },
+  { key: 'completed' as const, label: '已完成', icon: 'fa-solid fa-circle-check' },
 ]
 
 // ─── Computed ───
@@ -116,51 +116,51 @@ watch(activeTab, () => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 animate-fade-in-up">
     <!-- Page Header -->
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-cart-shopping text-amber-500"></i>
-      <h1 class="text-xl font-bold text-slate-900 dark:text-stone-50">Orders</h1>
+      <h1 class="text-xl font-bold text-slate-900 dark:text-stone-50">訂單管理</h1>
     </div>
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+      <div class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-blue-400">
         <div class="flex items-center justify-between mb-3">
-          <span class="text-sm font-medium text-slate-500 dark:text-slate-400">Order Count</span>
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-amber-50 dark:bg-amber-900/30">
-            <i class="fa-solid fa-file-lines text-sm text-amber-500"></i>
+          <span class="text-sm font-medium text-slate-500 dark:text-slate-400">案件總數</span>
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-blue-900/30">
+            <i class="fa-solid fa-file-lines text-sm text-blue-500"></i>
           </div>
         </div>
-        <p class="text-2xl font-bold text-slate-900 dark:text-stone-50">{{ filteredOrderCount }}</p>
+        <p class="text-2xl font-bold font-mono text-slate-900 dark:text-stone-50">{{ filteredOrderCount }}</p>
         <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">
-          {{ activeTab === 'pending' ? 'Pending' : activeTab === 'shipped' ? 'Shipped' : 'Completed' }} orders
+          {{ activeTab === 'pending' ? '待出貨' : activeTab === 'shipped' ? '已出貨' : '已完成' }}訂單
         </p>
       </div>
-      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+      <div class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-amber-400">
         <div class="flex items-center justify-between mb-3">
-          <span class="text-sm font-medium text-slate-500 dark:text-slate-400">Total Amount</span>
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-emerald-50 dark:bg-emerald-900/30">
-            <i class="fa-solid fa-dollar-sign text-sm text-emerald-500"></i>
+          <span class="text-sm font-medium text-slate-500 dark:text-slate-400">總金額</span>
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-amber-50 dark:bg-amber-900/30">
+            <i class="fa-solid fa-dollar-sign text-sm text-amber-500"></i>
           </div>
         </div>
-        <p class="text-2xl font-bold text-slate-900 dark:text-stone-50">${{ filteredTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</p>
+        <p class="text-2xl font-bold font-mono text-slate-900 dark:text-stone-50">${{ filteredTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</p>
         <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">
-          {{ activeTab === 'pending' ? 'Pending' : activeTab === 'shipped' ? 'Shipped' : 'Completed' }} total
+          {{ activeTab === 'pending' ? '待出貨' : activeTab === 'shipped' ? '已出貨' : '已完成' }}合計
         </p>
       </div>
     </div>
 
     <!-- Tabs -->
     <div class="border-b border-slate-200 dark:border-slate-700">
-      <nav class="flex gap-4">
+      <nav class="flex gap-2">
         <button
           v-for="tab in tabs"
           :key="tab.key"
-          class="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors"
+          class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all duration-300"
           :class="activeTab === tab.key
-            ? 'border-amber-500 text-amber-600 dark:text-amber-400'
-            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-stone-200'"
+            ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-md'
+            : 'text-slate-600 dark:text-slate-400 hover:text-amber-600'"
           @click="activeTab = tab.key"
         >
           <i :class="tab.icon" class="text-xs"></i>
@@ -168,7 +168,7 @@ watch(activeTab, () => {
           <span
             class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium"
             :class="activeTab === tab.key
-              ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+              ? 'bg-white/20 text-white'
               : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'"
           >
             {{ countByStatus(tab.key) }}
@@ -183,60 +183,73 @@ watch(activeTab, () => {
     </div>
 
     <!-- Orders Table -->
-    <div v-else class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-slate-200 dark:border-slate-700">
-              <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Order No.</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Customer</th>
-              <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Date</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Total</th>
-              <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(order, index) in filteredOrders"
-              :key="order.id"
-              class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-              :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
-            >
-              <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ order.orderNumber }}</td>
-              <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ order.customerName }}</td>
-              <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ order.date }}</td>
-              <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ order.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
-              <td class="px-5 py-3 text-right">
-                <button
-                  v-if="activeTab === 'pending'"
-                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg shadow-sm transition-colors"
-                  @click="markAsShipped(order.id)"
-                >
-                  <i class="fa-solid fa-truck text-[10px]"></i> Mark Shipped
-                </button>
-                <button
-                  v-else-if="activeTab === 'shipped'"
-                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg shadow-sm transition-colors"
-                  @click="markAsCompleted(order.id)"
-                >
-                  <i class="fa-solid fa-circle-check text-[10px]"></i> Complete
-                </button>
-                <span
-                  v-else
-                  class="text-xs text-slate-400 dark:text-slate-500"
-                >
-                  -
-                </span>
-              </td>
-            </tr>
-            <tr v-if="filteredOrders.length === 0">
-              <td colspan="5" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
-                No orders found.
-              </td>
-            </tr>
-          </tbody>
-        </table>
+    <Transition name="fade" mode="out-in">
+      <div v-if="!loading" :key="activeTab" class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-violet-400">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-gray-800 dark:to-slate-800">
+                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">訂單編號</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">客戶名稱</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">日期</th>
+                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">金額</th>
+                <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(order, index) in filteredOrders"
+                :key="order.id"
+                class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-amber-50 dark:hover:bg-gray-700/50 hover:translate-x-1 transition-all"
+                :class="index % 2 === 1 ? 'bg-orange-50/30 dark:bg-gray-800/50' : ''"
+              >
+                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ order.orderNumber }}</td>
+                <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ order.customerName }}</td>
+                <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ order.date }}</td>
+                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ order.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
+                <td class="px-5 py-3 text-right">
+                  <button
+                    v-if="activeTab === 'pending'"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+                    @click="markAsShipped(order.id)"
+                  >
+                    <i class="fa-solid fa-truck text-[10px]"></i> 標記出貨
+                  </button>
+                  <button
+                    v-else-if="activeTab === 'shipped'"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+                    @click="markAsCompleted(order.id)"
+                  >
+                    <i class="fa-solid fa-circle-check text-[10px]"></i> 完成訂單
+                  </button>
+                  <span
+                    v-else
+                    class="text-xs text-slate-400 dark:text-slate-500"
+                  >
+                    -
+                  </span>
+                </td>
+              </tr>
+              <tr v-if="filteredOrders.length === 0">
+                <td colspan="5" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
+                  查無訂單資料。
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

@@ -15,7 +15,7 @@ function closeSidebar() {
 </script>
 
 <template>
-  <div class="flex h-screen overflow-hidden bg-stone-50 dark:bg-slate-800">
+  <div class="flex h-screen overflow-hidden bg-gradient-to-br from-amber-50/30 via-white to-orange-50/20 dark:bg-gradient-to-br dark:from-gray-900 dark:via-slate-900 dark:to-gray-900">
     <!-- Desktop sidebar -->
     <div class="hidden lg:flex lg:flex-shrink-0">
       <SidebarMenu />
@@ -47,7 +47,11 @@ function closeSidebar() {
       <AppHeader @toggle-sidebar="toggleSidebar" />
 
       <main class="flex-1 overflow-y-auto p-4 sm:p-6">
-        <RouterView />
+        <RouterView v-slot="{ Component }">
+          <Transition name="page" mode="out-in">
+            <component :is="Component" />
+          </Transition>
+        </RouterView>
       </main>
     </div>
   </div>
@@ -72,5 +76,21 @@ function closeSidebar() {
 .overlay-enter-from,
 .overlay-leave-to {
   opacity: 0;
+}
+
+/* Page transition (fade + slide) */
+.page-enter-active {
+  transition: all 0.3s ease-out;
+}
+.page-leave-active {
+  transition: all 0.2s ease-in;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>
