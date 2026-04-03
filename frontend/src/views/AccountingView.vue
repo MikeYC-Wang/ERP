@@ -240,16 +240,25 @@ const subjectCategoryMap = computed(() => {
 })
 
 const trialBalanceData = computed(() => {
-  const totals: Record<string, { name: string; debit: number; credit: number }> = {}
+  // 先彙算每科目的發生額合計
+  const gross: Record<string, { name: string; totalDebit: number; totalCredit: number }> = {}
   vouchers.value.forEach((v) => {
     v.entries.forEach((e) => {
       const name = subjectNameMap.value[e.accountSubject] || `科目#${e.accountSubject}`
-      if (!totals[e.accountSubject]) totals[e.accountSubject] = { name, debit: 0, credit: 0 }
-      totals[e.accountSubject].debit += e.debitAmount
-      totals[e.accountSubject].credit += e.creditAmount
+      if (!gross[e.accountSubject]) gross[e.accountSubject] = { name, totalDebit: 0, totalCredit: 0 }
+      gross[e.accountSubject].totalDebit += e.debitAmount
+      gross[e.accountSubject].totalCredit += e.creditAmount
     })
   })
-  return Object.values(totals)
+  // 轉為餘額式：淨餘額 > 0 → 借方；< 0 → 貸方；= 0 → 兩邊都 0
+  return Object.values(gross).map(({ name, totalDebit, totalCredit }) => {
+    const net = totalDebit - totalCredit
+    return {
+      name,
+      debit: net > 0 ? net : 0,
+      credit: net < 0 ? -net : 0,
+    }
+  })
 })
 
 const incomeStatementData = computed(() => {
