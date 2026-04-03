@@ -122,7 +122,15 @@ const subjectVisiblePages = computed(() => pageWindow(subjectPage.value, subject
 
 const currentYear = new Date().getFullYear()
 const recentYears = [currentYear - 2, currentYear - 1, currentYear]
+const months = [
+  { value: 0, label: '全年' },
+  { value: 1, label: '1月' }, { value: 2, label: '2月' }, { value: 3, label: '3月' },
+  { value: 4, label: '4月' }, { value: 5, label: '5月' }, { value: 6, label: '6月' },
+  { value: 7, label: '7月' }, { value: 8, label: '8月' }, { value: 9, label: '9月' },
+  { value: 10, label: '10月' }, { value: 11, label: '11月' }, { value: 12, label: '12月' },
+]
 const selectedJournalYear = ref(currentYear)
+const selectedJournalMonth = ref(0)
 
 const vouchers = ref<JournalVoucher[]>([])
 
@@ -136,7 +144,12 @@ function openViewVoucher(voucher: JournalVoucher) {
 }
 
 const filteredVouchers = computed(() => {
-  return vouchers.value.filter((v) => v.date.startsWith(String(selectedJournalYear.value)))
+  return vouchers.value.filter((v) => {
+    if (!v.date.startsWith(String(selectedJournalYear.value))) return false
+    if (selectedJournalMonth.value === 0) return true
+    const mm = String(selectedJournalMonth.value).padStart(2, '0')
+    return v.date.startsWith(`${selectedJournalYear.value}-${mm}`)
+  })
 })
 
 // ─── Pagination: Journal Vouchers ───
@@ -148,7 +161,7 @@ const pagedVouchers = computed(() => {
 })
 const voucherTotalPages = computed(() => Math.max(1, Math.ceil(filteredVouchers.value.length / VOUCHER_PAGE_SIZE)))
 const voucherVisiblePages = computed(() => pageWindow(voucherPage.value, voucherTotalPages.value))
-watch(selectedJournalYear, () => { voucherPage.value = 1 })
+watch([selectedJournalYear, selectedJournalMonth], () => { voucherPage.value = 1 })
 
 const showVoucherModal = ref(false)
 const voucherForm = ref({
@@ -234,10 +247,17 @@ async function saveVoucher() {
 // ─── Tab 3: Financial Reports ───
 const activeReport = ref<'trial' | 'income' | 'balance'>('trial')
 const selectedReportYear = ref(currentYear)
+const selectedReportMonth = ref(0)
 
-// ─── 財務報表：依年份過濾 ───
+// ─── 財務報表：依年份＋月份過濾 ───
+// reportVouchers：損益表/資產負債表用 → 單期（只看選定月份）
 const reportVouchers = computed(() =>
-  vouchers.value.filter((v) => v.date.startsWith(String(selectedReportYear.value)))
+  vouchers.value.filter((v) => {
+    if (!v.date.startsWith(String(selectedReportYear.value))) return false
+    if (selectedReportMonth.value === 0) return true
+    const mm = String(selectedReportMonth.value).padStart(2, '0')
+    return v.date.startsWith(`${selectedReportYear.value}-${mm}`)
+  })
 )
 
 // ─── 財務報表：從傳票明細動態彙算 ───
@@ -253,22 +273,32 @@ const subjectCategoryMap = computed(() => {
   return m
 })
 
+// 試算表用累計傳票：全年 → 全年；單月 → 年初到該月底
+const trialVouchers = computed(() => {
+  if (selectedReportMonth.value === 0) return reportVouchers.value
+  const mm = String(selectedReportMonth.value).padStart(2, '0')
+  return vouchers.value.filter((v) => {
+    if (!v.date.startsWith(String(selectedReportYear.value))) return false
+    return v.date.substring(5, 7) <= mm
+  })
+})
+
 const trialBalanceData = computed(() => {
-  // 先彙算每科目的發生額合計
-  const gross: Record<string, { name: string; totalDebit: number; totalCredit: number }> = {}
-  reportVouchers.value.forEach((v) => {
+  // 彙算累計發生額（年初到選定月底）
+  const gross: Record<string, { totalDebit: number; totalCredit: number }> = {}
+  trialVouchers.value.forEach((v) => {
     v.entries.forEach((e) => {
-      const name = subjectNameMap.value[e.accountSubject] || `科目#${e.accountSubject}`
-      if (!gross[e.accountSubject]) gross[e.accountSubject] = { name, totalDebit: 0, totalCredit: 0 }
+      if (!gross[e.accountSubject]) gross[e.accountSubject] = { totalDebit: 0, totalCredit: 0 }
       gross[e.accountSubject].totalDebit += e.debitAmount
       gross[e.accountSubject].totalCredit += e.creditAmount
     })
   })
-  // 轉為餘額式：淨餘額 > 0 → 借方；< 0 → 貸方；= 0 → 兩邊都 0
-  return Object.values(gross).map(({ name, totalDebit, totalCredit }) => {
+  // 以科目清單為基底（$0 科目也顯示），轉為餘額式
+  return subjects.value.map((s) => {
+    const { totalDebit = 0, totalCredit = 0 } = gross[String(s.id)] ?? {}
     const net = totalDebit - totalCredit
     return {
-      name,
+      name: s.name,
       debit: net > 0 ? net : 0,
       credit: net < 0 ? -net : 0,
     }
@@ -307,9 +337,9 @@ const balanceSheetData = computed(() => {
   const assets: { name: string; amount: number }[] = []
   const liabilities: { name: string; amount: number }[] = []
   const equity: { name: string; amount: number }[] = []
-  // 先彙算傳票（依選定年份）
+  // 先彙算傳票（累計到選定月底，與試算表邏輯一致）
   const totals: Record<string, number> = {}
-  reportVouchers.value.forEach((v) => {
+  trialVouchers.value.forEach((v) => {
     v.entries.forEach((e) => {
       if (!totals[e.accountSubject]) totals[e.accountSubject] = 0
       totals[e.accountSubject] += (e.debitAmount - e.creditAmount)
@@ -322,8 +352,16 @@ const balanceSheetData = computed(() => {
     else if (s.category === 'liability') liabilities.push({ name: s.name, amount: -net })
     else if (s.category === 'equity') equity.push({ name: s.name, amount: -net })
   })
-  // 保留盈餘 = 本期淨利（非獨立科目，自動帶入）
-  equity.push({ name: '保留盈餘', amount: netIncome.value })
+  // 保留盈餘 = 累計淨利（年初到選定月底）
+  let trialRevenue = 0, trialExpense = 0
+  trialVouchers.value.forEach((v) => {
+    v.entries.forEach((e) => {
+      const cat = subjectCategoryMap.value[e.accountSubject]
+      if (cat === 'revenue') trialRevenue += (e.creditAmount - e.debitAmount)
+      else if (cat === 'expense') trialExpense += (e.debitAmount - e.creditAmount)
+    })
+  })
+  equity.push({ name: '保留盈餘', amount: trialRevenue - trialExpense })
   return { assets, liabilities, equity }
 })
 
@@ -523,6 +561,12 @@ onMounted(async () => {
               >
                 <option v-for="year in recentYears" :key="year" :value="year">{{ year }}</option>
               </select>
+              <select
+                v-model="selectedJournalMonth"
+                class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
+              >
+                <option v-for="m in months" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
             </div>
             <button
               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
@@ -645,12 +689,20 @@ onMounted(async () => {
                 </button>
               </div>
             </div>
-            <select
-              v-model="selectedReportYear"
-              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
-            >
-              <option v-for="year in recentYears" :key="year" :value="year">{{ year }}</option>
-            </select>
+            <div class="flex items-center gap-2">
+              <select
+                v-model="selectedReportYear"
+                class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
+              >
+                <option v-for="year in recentYears" :key="year" :value="year">{{ year }}</option>
+              </select>
+              <select
+                v-model="selectedReportMonth"
+                class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
+              >
+                <option v-for="m in months" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
           </div>
 
           <!-- Trial Balance -->
