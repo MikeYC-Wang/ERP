@@ -16,23 +16,7 @@ interface Order {
 }
 
 // ─── Data ───
-const orders = ref<Order[]>([
-  // Pending (4)
-  { id: 1, orderNumber: 'ORD-2026-001', customerName: '寵物超市有限公司', date: '2026-03-28', status: 'pending', totalAmount: 4250.00 },
-  { id: 2, orderNumber: 'ORD-2026-002', customerName: '歡樂爪子寵物店', date: '2026-03-27', status: 'pending', totalAmount: 1820.00 },
-  { id: 3, orderNumber: 'ORD-2026-003', customerName: '水世界水族館', date: '2026-03-26', status: 'pending', totalAmount: 3600.00 },
-  { id: 4, orderNumber: 'ORD-2026-004', customerName: '羽之友鳥園', date: '2026-03-25', status: 'pending', totalAmount: 950.00 },
-  // Shipped (3)
-  { id: 5, orderNumber: 'ORD-2026-005', customerName: '寵物天堂', date: '2026-03-22', status: 'shipped', totalAmount: 6780.00 },
-  { id: 6, orderNumber: 'ORD-2026-006', customerName: '動物王國', date: '2026-03-20', status: 'shipped', totalAmount: 2340.00 },
-  { id: 7, orderNumber: 'ORD-2026-007', customerName: '汪喵生活館', date: '2026-03-18', status: 'shipped', totalAmount: 5100.00 },
-  // Completed (5)
-  { id: 8, orderNumber: 'ORD-2026-008', customerName: '寵物超市有限公司', date: '2026-03-10', status: 'completed', totalAmount: 3200.00 },
-  { id: 9, orderNumber: 'ORD-2026-009', customerName: '歡樂爪子寵物店', date: '2026-03-08', status: 'completed', totalAmount: 1450.00 },
-  { id: 10, orderNumber: 'ORD-2026-010', customerName: '水世界水族館', date: '2026-03-05', status: 'completed', totalAmount: 7800.00 },
-  { id: 11, orderNumber: 'ORD-2026-011', customerName: '寵物天堂', date: '2026-03-01', status: 'completed', totalAmount: 2100.00 },
-  { id: 12, orderNumber: 'ORD-2026-012', customerName: '動物王國', date: '2026-02-28', status: 'completed', totalAmount: 4500.00 },
-])
+const orders = ref<Order[]>([])
 
 // ─── Tab State ───
 const activeTab = ref<'pending' | 'shipped' | 'completed'>('pending')
@@ -83,9 +67,10 @@ async function loadOrders() {
   loading.value = true
   try {
     const res = await getOrders({ status: activeTab.value })
-    if (res?.data && Array.isArray(res.data)) {
+    const rawList = Array.isArray(res?.data) ? res.data : res?.data?.results ?? []
+    if (rawList.length) {
       // Replace only orders matching the current tab from API
-      const apiOrders: Order[] = res.data.map((o: Record<string, unknown>) => ({
+      const apiOrders: Order[] = rawList.map((o: Record<string, unknown>) => ({
         id: o.id as number,
         orderNumber: (o.order_number as string) || '',
         customerName: (o.customer_name as string) || '',
@@ -206,7 +191,7 @@ watch(activeTab, () => {
                 <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ order.orderNumber }}</td>
                 <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ order.customerName }}</td>
                 <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ order.date }}</td>
-                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ order.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
+                <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ Number(order.totalAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
                 <td class="px-5 py-3 text-right">
                   <button
                     v-if="activeTab === 'pending'"

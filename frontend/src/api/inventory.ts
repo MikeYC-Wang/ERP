@@ -6,7 +6,7 @@ export interface Product {
   sku: string
   name: string
   unit: string
-  price: number
+  current_price: number
 }
 
 export interface InventoryBatch {

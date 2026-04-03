@@ -12,6 +12,7 @@ import {
 import VChart from 'vue-echarts'
 import { useThemeStore } from '@/stores/theme'
 import { getSummary, getMonthlyTrend, getExpenseBreakdown, getTopProducts } from '@/api/dashboard'
+import { getJournalVouchers, getAccountSubjects } from '@/api/accounting'
 
 use([
   CanvasRenderer,
@@ -186,14 +187,21 @@ const expensePieOption = computed(() => ({
   series: [
     {
       type: 'pie' as const,
-      radius: ['40%', '70%'],
+      radius: ['40%', '68%'],
       center: ['35%', '50%'],
-      avoidLabelOverlap: false,
+      avoidLabelOverlap: true,
+      minAngle: 5,
       label: {
         show: true,
         formatter: '{d}%',
         color: textColor.value,
         fontSize: 11,
+        distanceToLabelLine: 4,
+      },
+      labelLine: {
+        length: 10,
+        length2: 16,
+        smooth: true,
       },
       data: expenseBreakdownData.value,
       color: pieColors.value,
@@ -259,59 +267,76 @@ const barOption = computed(() => ({
 }))
 
 // ─── Journal Entries ───
-const journalEntries = [
-  {
-    date: '2026-03-28',
-    account: '商品銷售收入',
-    description: '高級狗糧大量訂單',
-    debit: '',
-    credit: '$4,250.00',
-  },
-  {
-    date: '2026-03-27',
-    account: '銷貨成本',
-    description: '貓咪玩具補貨',
-    debit: '$1,820.00',
-    credit: '',
-  },
-  {
-    date: '2026-03-26',
-    account: '應收帳款',
-    description: '發票 #1042 - PetMart Ltd.',
-    debit: '$3,600.00',
-    credit: '',
-  },
-  {
-    date: '2026-03-25',
-    account: '租金費用',
-    description: '每月倉庫租金',
-    debit: '$2,500.00',
-    credit: '',
-  },
-  {
-    date: '2026-03-24',
-    account: '商品銷售收入',
-    description: '網路商店每日結算',
-    debit: '',
-    credit: '$6,780.00',
-  },
-]
+const journalEntries = ref<
+  { date: string; account: string; description: string; debit: string; credit: string }[]
+>([])
+
+// ─── Pagination helper ───
+function pageWindow(current: number, total: number, size = 5): number[] {
+  const half = Math.floor(size / 2)
+  let start = Math.max(1, current - half)
+  const end = Math.min(total, start + size - 1)
+  if (end - start + 1 < size) start = Math.max(1, end - size + 1)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+}
+
+// ─── Pagination: Journal Entries ───
+const journalPage = ref(1)
+const JOURNAL_PAGE_SIZE = 5
+const pagedJournalEntries = computed(() => {
+  const start = (journalPage.value - 1) * JOURNAL_PAGE_SIZE
+  return journalEntries.value.slice(start, start + JOURNAL_PAGE_SIZE)
+})
+const journalTotalPages = computed(() => Math.max(1, Math.ceil(journalEntries.value.length / JOURNAL_PAGE_SIZE)))
+const journalVisiblePages = computed(() => pageWindow(journalPage.value, journalTotalPages.value))
 
 // ─── Load from API ───
 onMounted(async () => {
   loading.value = true
   try {
-    const [summaryRes, trendRes, breakdownRes, productsRes] = await Promise.all([
+    const [summaryRes, trendRes, breakdownRes, productsRes, vouchersRes, subjectsRes] = await Promise.all([
       getSummary().catch(() => null),
       getMonthlyTrend().catch(() => null),
       getExpenseBreakdown().catch(() => null),
       getTopProducts().catch(() => null),
+      getJournalVouchers({ page_size: 10, ordering: '-date' }).catch(() => null),
+      getAccountSubjects({ page_size: 1000 }).catch(() => null),
     ])
     if (summaryRes?.data) {
       const d = summaryRes.data
       if (d.total_revenue != null) metrics.value[0].value = `$${Number(d.total_revenue).toLocaleString()}`
       if (d.total_expenses != null) metrics.value[1].value = `$${Number(d.total_expenses).toLocaleString()}`
       if (d.net_profit != null) metrics.value[2].value = `$${Number(d.net_profit).toLocaleString()}`
+
+      // Use real change values from API
+      if (d.revenue_change != null) {
+        const v = Number(d.revenue_change)
+        metrics.value[0].change = `${v >= 0 ? '+' : ''}${v}%`
+        metrics.value[0].positive = v >= 0
+        metrics.value[0].changeIcon = v >= 0 ? 'fa-solid fa-arrow-up-right' : 'fa-solid fa-arrow-down-left'
+      }
+      if (d.expense_change != null) {
+        const v = Number(d.expense_change)
+        metrics.value[1].change = `${v >= 0 ? '+' : ''}${v}%`
+        // Expense going up is negative for business
+        metrics.value[1].positive = v <= 0
+        metrics.value[1].changeIcon = v >= 0 ? 'fa-solid fa-arrow-up-right' : 'fa-solid fa-arrow-down-left'
+      }
+      if (d.total_revenue != null && d.net_profit != null && d.revenue_change != null && d.expense_change != null) {
+        // Compute net profit change: derive from (current - previous) / previous
+        const curRevenue = Number(d.total_revenue)
+        const curExpenses = Number(d.total_expenses)
+        const revChange = Number(d.revenue_change) / 100
+        const expChange = Number(d.expense_change) / 100
+        const prevRevenue = revChange !== -1 ? curRevenue / (1 + revChange) : 0
+        const prevExpenses = expChange !== -1 ? curExpenses / (1 + expChange) : 0
+        const prevProfit = prevRevenue - prevExpenses
+        const profitChange = prevProfit !== 0 ? ((Number(d.net_profit) - prevProfit) / Math.abs(prevProfit)) * 100 : 0
+        const pv = Math.round(profitChange * 10) / 10
+        metrics.value[2].change = `${pv >= 0 ? '+' : ''}${pv}%`
+        metrics.value[2].positive = pv >= 0
+        metrics.value[2].changeIcon = pv >= 0 ? 'fa-solid fa-arrow-up-right' : 'fa-solid fa-arrow-down-left'
+      }
     }
     if (trendRes?.data) {
       if (trendRes.data.revenue) revenueData.value = trendRes.data.revenue
@@ -329,6 +354,49 @@ onMounted(async () => {
         revenue: p.revenue,
         cost: p.cost,
       }))
+    }
+
+    // Build account subject ID -> name map
+    const subjectMap: Record<number, string> = {}
+    if (subjectsRes?.data) {
+      const subjectList = subjectsRes.data.results ?? subjectsRes.data
+      if (Array.isArray(subjectList)) {
+        subjectList.forEach((s: any) => { subjectMap[s.id] = s.name })
+      }
+    }
+
+    // Load journal voucher entries
+    if (vouchersRes?.data) {
+      const vouchers = vouchersRes.data.results ?? vouchersRes.data
+      if (Array.isArray(vouchers)) {
+        const entries: { date: string; account: string; description: string; debit: string; credit: string }[] = []
+        for (const v of vouchers) {
+          const items = v.items ?? []
+          if (items.length === 0) {
+            // Voucher with no items — show header only
+            entries.push({
+              date: v.date,
+              account: '-',
+              description: v.description || v.voucher_number,
+              debit: '-',
+              credit: '-',
+            })
+          } else {
+            for (const item of items) {
+              const debitVal = Number(item.debit_amount)
+              const creditVal = Number(item.credit_amount)
+              entries.push({
+                date: v.date,
+                account: subjectMap[item.account_subject] ?? `科目 #${item.account_subject}`,
+                description: v.description || v.voucher_number,
+                debit: debitVal > 0 ? `$${debitVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '',
+                credit: creditVal > 0 ? `$${creditVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '',
+              })
+            }
+          }
+        }
+        journalEntries.value = entries
+      }
     }
   } catch (e) {
     console.warn('Dashboard API unavailable, using fallback data', e)
@@ -505,7 +573,7 @@ onMounted(async () => {
             </thead>
             <tbody>
               <tr
-                v-for="(entry, index) in journalEntries"
+                v-for="(entry, index) in pagedJournalEntries"
                 :key="index"
                 class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200 hover:translate-x-1"
                 :class="index % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''"
@@ -528,6 +596,41 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+        </div>
+        <!-- 傳票記錄分頁 -->
+        <div class="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700">
+          <span class="text-xs text-slate-500 dark:text-slate-400">
+            共 {{ journalEntries.length }} 筆，第 {{ journalPage }}/{{ journalTotalPages }} 頁
+          </span>
+          <div class="flex items-center gap-1">
+            <button
+              :disabled="journalPage === 1"
+              @click="journalPage--"
+              class="px-2.5 py-1.5 text-xs rounded-md transition-all"
+              :class="journalPage === 1 ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600'"
+            >
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span v-if="journalVisiblePages[0] > 1" class="px-1 text-xs text-slate-400">…</span>
+            <button
+              v-for="p in journalVisiblePages"
+              :key="p"
+              @click="journalPage = p"
+              class="w-7 h-7 text-xs rounded-md transition-all"
+              :class="journalPage === p
+                ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
+            >{{ p }}</button>
+            <span v-if="journalVisiblePages[journalVisiblePages.length - 1] < journalTotalPages" class="px-1 text-xs text-slate-400">…</span>
+            <button
+              :disabled="journalPage === journalTotalPages"
+              @click="journalPage++"
+              class="px-2.5 py-1.5 text-xs rounded-md transition-all"
+              :class="journalPage === journalTotalPages ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600'"
+            >
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
         </div>
       </div>
     </template>

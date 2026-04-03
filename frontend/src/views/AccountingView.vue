@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   getAccountSubjects,
   createAccountSubject,
@@ -24,29 +24,23 @@ interface AccountSubject {
 }
 
 const categoryMap: Record<string, string> = {
-  'Assets': '資產',
-  'Liabilities': '負債',
-  'Equity': '投入',
-  'Revenue': '收入',
-  'Operating Expenses': '營業費用',
+  'asset': '資產',
+  'liability': '負債',
+  'equity': '投入',
+  'revenue': '收入',
+  'expense': '營業費用',
 }
-const categories = ['Assets', 'Liabilities', 'Equity', 'Revenue', 'Operating Expenses'] as const
+const categories = ['asset', 'liability', 'equity', 'revenue', 'expense'] as const
 
-const subjects = ref<AccountSubject[]>([
-  { id: 1, code: '1001', name: '商品存貨', category: 'Assets' },
-  { id: 2, code: '1002', name: '應收帳款', category: 'Assets' },
-  { id: 3, code: '2001', name: '應付帳款', category: 'Liabilities' },
-  { id: 4, code: '4001', name: '銷貨收入', category: 'Revenue' },
-  { id: 5, code: '5001', name: '租金費用', category: 'Operating Expenses' },
-])
+const subjects = ref<AccountSubject[]>([])
 
 const showSubjectModal = ref(false)
 const editingSubject = ref<AccountSubject | null>(null)
-const subjectForm = ref({ code: '', name: '', category: 'Assets' })
+const subjectForm = ref({ code: '', name: '', category: 'asset' })
 
 function openAddSubject() {
   editingSubject.value = null
-  subjectForm.value = { code: '', name: '', category: 'Assets' }
+  subjectForm.value = { code: '', name: '', category: 'asset' }
   showSubjectModal.value = true
 }
 
@@ -107,49 +101,45 @@ interface JournalVoucher {
   entries: VoucherEntry[]
 }
 
+// ─── Pagination helper ───
+function pageWindow(current: number, total: number, size = 5): number[] {
+  const half = Math.floor(size / 2)
+  let start = Math.max(1, current - half)
+  const end = Math.min(total, start + size - 1)
+  if (end - start + 1 < size) start = Math.max(1, end - size + 1)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+}
+
+// ─── Pagination: Account Subjects ───
+const subjectPage = ref(1)
+const SUBJECT_PAGE_SIZE = 15
+const pagedSubjects = computed(() => {
+  const start = (subjectPage.value - 1) * SUBJECT_PAGE_SIZE
+  return subjects.value.slice(start, start + SUBJECT_PAGE_SIZE)
+})
+const subjectTotalPages = computed(() => Math.max(1, Math.ceil(subjects.value.length / SUBJECT_PAGE_SIZE)))
+const subjectVisiblePages = computed(() => pageWindow(subjectPage.value, subjectTotalPages.value))
+
 const currentYear = new Date().getFullYear()
 const recentYears = [currentYear - 2, currentYear - 1, currentYear]
 const selectedJournalYear = ref(currentYear)
 
-const vouchers = ref<JournalVoucher[]>([
-  {
-    id: 1,
-    date: '2026-03-15',
-    voucherNumber: 'JV-2026-001',
-    description: '每月租金支付',
-    isSystemGenerated: false,
-    entries: [
-      { accountSubject: '5001', debitAmount: 2500, creditAmount: 0 },
-      { accountSubject: '1001', debitAmount: 0, creditAmount: 2500 },
-    ],
-  },
-  {
-    id: 2,
-    date: '2026-03-20',
-    voucherNumber: 'JV-2026-002',
-    description: '銷貨收入認列',
-    isSystemGenerated: true,
-    entries: [
-      { accountSubject: '1002', debitAmount: 8500, creditAmount: 0 },
-      { accountSubject: '4001', debitAmount: 0, creditAmount: 8500 },
-    ],
-  },
-  {
-    id: 3,
-    date: '2026-03-25',
-    voucherNumber: 'JV-2026-003',
-    description: '進貨存貨',
-    isSystemGenerated: true,
-    entries: [
-      { accountSubject: '1001', debitAmount: 12000, creditAmount: 0 },
-      { accountSubject: '2001', debitAmount: 0, creditAmount: 12000 },
-    ],
-  },
-])
+const vouchers = ref<JournalVoucher[]>([])
 
 const filteredVouchers = computed(() => {
   return vouchers.value.filter((v) => v.date.startsWith(String(selectedJournalYear.value)))
 })
+
+// ─── Pagination: Journal Vouchers ───
+const voucherPage = ref(1)
+const VOUCHER_PAGE_SIZE = 15
+const pagedVouchers = computed(() => {
+  const start = (voucherPage.value - 1) * VOUCHER_PAGE_SIZE
+  return filteredVouchers.value.slice(start, start + VOUCHER_PAGE_SIZE)
+})
+const voucherTotalPages = computed(() => Math.max(1, Math.ceil(filteredVouchers.value.length / VOUCHER_PAGE_SIZE)))
+const voucherVisiblePages = computed(() => pageWindow(voucherPage.value, voucherTotalPages.value))
+watch(selectedJournalYear, () => { voucherPage.value = 1 })
 
 const showVoucherModal = ref(false)
 const voucherForm = ref({
@@ -197,25 +187,38 @@ async function saveVoucher() {
     const payload = {
       date: voucherForm.value.date,
       description: voucherForm.value.description,
-      entries: voucherForm.value.entries.map((e) => ({
+      items: voucherForm.value.entries.map((e) => ({
         account_subject: Number(e.accountSubject),
         debit_amount: e.debitAmount,
         credit_amount: e.creditAmount,
       })),
     }
-    await createJournalVoucher(payload)
+    const res = await createJournalVoucher(payload)
+    const v = res.data as Record<string, unknown>
+    vouchers.value.push({
+      id: v.id as number,
+      date: v.date as string,
+      voucherNumber: v.voucher_number as string,
+      description: v.description as string,
+      isSystemGenerated: v.is_system_generated as boolean,
+      entries: (v.items as Array<Record<string, unknown>>)?.map((e) => ({
+        accountSubject: String(e.account_subject),
+        debitAmount: Number(e.debit_amount),
+        creditAmount: Number(e.credit_amount),
+      })) || [],
+    })
   } catch (e) {
     console.warn('Failed to create voucher via API, applying locally', e)
+    const newId = Math.max(...vouchers.value.map((v) => v.id), 0) + 1
+    vouchers.value.push({
+      id: newId,
+      date: voucherForm.value.date,
+      voucherNumber: `JV-${voucherForm.value.date.substring(0, 4)}-${String(newId).padStart(3, '0')}`,
+      description: voucherForm.value.description,
+      isSystemGenerated: false,
+      entries: [...voucherForm.value.entries],
+    })
   }
-  const newId = Math.max(...vouchers.value.map((v) => v.id), 0) + 1
-  vouchers.value.push({
-    id: newId,
-    date: voucherForm.value.date,
-    voucherNumber: `JV-${voucherForm.value.date.substring(0, 4)}-${String(newId).padStart(3, '0')}`,
-    description: voucherForm.value.description,
-    isSystemGenerated: false,
-    entries: [...voucherForm.value.entries],
-  })
   showVoucherModal.value = false
 }
 
@@ -223,60 +226,92 @@ async function saveVoucher() {
 const activeReport = ref<'trial' | 'income' | 'balance'>('trial')
 const selectedReportYear = ref(currentYear)
 
-const trialBalanceData = [
-  { name: '商品存貨', debit: 45000, credit: 0 },
-  { name: '應收帳款', debit: 18500, credit: 0 },
-  { name: '應付帳款', debit: 0, credit: 12000 },
-  { name: '銷貨收入', debit: 0, credit: 128430 },
-  { name: '租金費用', debit: 30000, credit: 0 },
-  { name: '業主權益', debit: 0, credit: 53070 },
-]
+// ─── 財務報表：從傳票明細動態彙算 ───
+const subjectNameMap = computed(() => {
+  const m: Record<string, string> = {}
+  subjects.value.forEach((s) => { m[String(s.id)] = s.name })
+  return m
+})
 
-const incomeStatementData = {
-  revenue: [
-    { name: '銷貨收入', amount: 128430 },
-    { name: '服務收入', amount: 15200 },
-  ],
-  expenses: [
-    { name: '銷貨成本', amount: 84210 },
-    { name: '租金費用', amount: 30000 },
-    { name: '水電費用', amount: 4800 },
-    { name: '薪資費用', amount: 12000 },
-  ],
-}
+const subjectCategoryMap = computed(() => {
+  const m: Record<string, string> = {}
+  subjects.value.forEach((s) => { m[String(s.id)] = s.category })
+  return m
+})
+
+const trialBalanceData = computed(() => {
+  const totals: Record<string, { name: string; debit: number; credit: number }> = {}
+  vouchers.value.forEach((v) => {
+    v.entries.forEach((e) => {
+      const name = subjectNameMap.value[e.accountSubject] || `科目#${e.accountSubject}`
+      if (!totals[e.accountSubject]) totals[e.accountSubject] = { name, debit: 0, credit: 0 }
+      totals[e.accountSubject].debit += e.debitAmount
+      totals[e.accountSubject].credit += e.creditAmount
+    })
+  })
+  return Object.values(totals)
+})
+
+const incomeStatementData = computed(() => {
+  const revenue: { name: string; amount: number }[] = []
+  const expenses: { name: string; amount: number }[] = []
+  const totals: Record<string, number> = {}
+  vouchers.value.forEach((v) => {
+    v.entries.forEach((e) => {
+      const net = e.creditAmount - e.debitAmount
+      if (!totals[e.accountSubject]) totals[e.accountSubject] = 0
+      totals[e.accountSubject] += net
+    })
+  })
+  Object.entries(totals).forEach(([id, net]) => {
+    const cat = subjectCategoryMap.value[id]
+    const name = subjectNameMap.value[id] || `科目#${id}`
+    if (cat === 'revenue') revenue.push({ name, amount: net })
+    else if (cat === 'expense') expenses.push({ name, amount: -net })
+  })
+  return { revenue, expenses }
+})
 
 const incomeTotal = computed(
-  () => incomeStatementData.revenue.reduce((s, r) => s + r.amount, 0),
+  () => incomeStatementData.value.revenue.reduce((s, r) => s + r.amount, 0),
 )
 const expenseTotal = computed(
-  () => incomeStatementData.expenses.reduce((s, e) => s + e.amount, 0),
+  () => incomeStatementData.value.expenses.reduce((s, e) => s + e.amount, 0),
 )
 const netIncome = computed(() => incomeTotal.value - expenseTotal.value)
 
-const balanceSheetData = {
-  assets: [
-    { name: '現金', amount: 32000 },
-    { name: '商品存貨', amount: 45000 },
-    { name: '應收帳款', amount: 18500 },
-  ],
-  liabilities: [
-    { name: '應付帳款', amount: 12000 },
-    { name: '應付票據', amount: 25000 },
-  ],
-  equity: [
-    { name: '業主資本', amount: 40000 },
-    { name: '保留盈餘', amount: 18500 },
-  ],
-}
+const balanceSheetData = computed(() => {
+  const assets: { name: string; amount: number }[] = []
+  const liabilities: { name: string; amount: number }[] = []
+  const equity: { name: string; amount: number }[] = []
+  // 先彙算傳票
+  const totals: Record<string, number> = {}
+  vouchers.value.forEach((v) => {
+    v.entries.forEach((e) => {
+      if (!totals[e.accountSubject]) totals[e.accountSubject] = 0
+      totals[e.accountSubject] += (e.debitAmount - e.creditAmount)
+    })
+  })
+  // 以科目清單為基底，$0 科目也顯示
+  subjects.value.forEach((s) => {
+    const net = totals[String(s.id)] ?? 0
+    if (s.category === 'asset') assets.push({ name: s.name, amount: net })
+    else if (s.category === 'liability') liabilities.push({ name: s.name, amount: -net })
+    else if (s.category === 'equity') equity.push({ name: s.name, amount: -net })
+  })
+  // 保留盈餘 = 本期淨利（非獨立科目，自動帶入）
+  equity.push({ name: '保留盈餘', amount: netIncome.value })
+  return { assets, liabilities, equity }
+})
 
 const totalAssets = computed(
-  () => balanceSheetData.assets.reduce((s, a) => s + a.amount, 0),
+  () => balanceSheetData.value.assets.reduce((s, a) => s + a.amount, 0),
 )
 const totalLiabilities = computed(
-  () => balanceSheetData.liabilities.reduce((s, l) => s + l.amount, 0),
+  () => balanceSheetData.value.liabilities.reduce((s, l) => s + l.amount, 0),
 )
 const totalEquity = computed(
-  () => balanceSheetData.equity.reduce((s, e) => s + e.amount, 0),
+  () => balanceSheetData.value.equity.reduce((s, e) => s + e.amount, 0),
 )
 
 // ─── Load from API ───
@@ -284,20 +319,35 @@ onMounted(async () => {
   loading.value = true
   try {
     const [subjectsRes, vouchersRes] = await Promise.all([
-      getAccountSubjects().catch(() => null),
-      getJournalVouchers().catch(() => null),
+      getAccountSubjects({ page_size: 1000 }).catch(() => null),
+      getJournalVouchers({ page_size: 1000 }).catch(() => null),
     ])
-    if (subjectsRes?.data && Array.isArray(subjectsRes.data)) {
-      subjects.value = subjectsRes.data
+    const subjectsData = Array.isArray(subjectsRes?.data)
+      ? subjectsRes.data
+      : Array.isArray(subjectsRes?.data?.results)
+        ? subjectsRes.data.results
+        : null
+    if (subjectsData) {
+      subjects.value = subjectsData.map((s: Record<string, unknown>) => ({
+        id: s.id as number,
+        code: s.code as string,
+        name: s.name as string,
+        category: s.category as string,
+      }))
     }
-    if (vouchersRes?.data && Array.isArray(vouchersRes.data)) {
-      vouchers.value = vouchersRes.data.map((v: Record<string, unknown>) => ({
+    const vouchersData = Array.isArray(vouchersRes?.data)
+      ? vouchersRes.data
+      : Array.isArray(vouchersRes?.data?.results)
+        ? vouchersRes.data.results
+        : null
+    if (vouchersData) {
+      vouchers.value = vouchersData.map((v: Record<string, unknown>) => ({
         id: v.id as number,
         date: v.date as string,
         voucherNumber: v.voucher_number as string,
         description: v.description as string,
         isSystemGenerated: v.is_system_generated as boolean,
-        entries: (v.entries as Array<Record<string, unknown>>)?.map((e) => ({
+        entries: (v.items as Array<Record<string, unknown>>)?.map((e) => ({
           accountSubject: String(e.account_subject),
           debitAmount: Number(e.debit_amount),
           creditAmount: Number(e.credit_amount),
@@ -375,7 +425,7 @@ onMounted(async () => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(subject, index) in subjects"
+                    v-for="(subject, index) in pagedSubjects"
                     :key="subject.id"
                     class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-amber-50 dark:hover:bg-gray-700/50 hover:translate-x-1 transition-all"
                     :class="index % 2 === 1 ? 'bg-orange-50/30 dark:bg-gray-800/50' : ''"
@@ -398,6 +448,41 @@ onMounted(async () => {
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <!-- 會計科目分頁 -->
+            <div class="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700">
+              <span class="text-xs text-slate-500 dark:text-slate-400">
+                共 {{ subjects.length }} 筆，第 {{ subjectPage }}/{{ subjectTotalPages }} 頁
+              </span>
+              <div class="flex items-center gap-1">
+                <button
+                  :disabled="subjectPage === 1"
+                  @click="subjectPage--"
+                  class="px-2.5 py-1.5 text-xs rounded-md transition-all"
+                  :class="subjectPage === 1 ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600'"
+                >
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span v-if="subjectVisiblePages[0] > 1" class="px-1 text-xs text-slate-400">…</span>
+                <button
+                  v-for="p in subjectVisiblePages"
+                  :key="p"
+                  @click="subjectPage = p"
+                  class="w-7 h-7 text-xs rounded-md transition-all"
+                  :class="subjectPage === p
+                    ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
+                >{{ p }}</button>
+                <span v-if="subjectVisiblePages[subjectVisiblePages.length - 1] < subjectTotalPages" class="px-1 text-xs text-slate-400">…</span>
+                <button
+                  :disabled="subjectPage === subjectTotalPages"
+                  @click="subjectPage++"
+                  class="px-2.5 py-1.5 text-xs rounded-md transition-all"
+                  :class="subjectPage === subjectTotalPages ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600'"
+                >
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -439,7 +524,7 @@ onMounted(async () => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(voucher, index) in filteredVouchers"
+                    v-for="(voucher, index) in pagedVouchers"
                     :key="voucher.id"
                     class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-amber-50 dark:hover:bg-gray-700/50 hover:translate-x-1 transition-all"
                     :class="index % 2 === 1 ? 'bg-orange-50/30 dark:bg-gray-800/50' : ''"
@@ -467,13 +552,48 @@ onMounted(async () => {
                       </button>
                     </td>
                   </tr>
-                  <tr v-if="filteredVouchers.length === 0">
+                  <tr v-if="pagedVouchers.length === 0">
                     <td colspan="5" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
                       {{ selectedJournalYear }} 年度無傳票資料。
                     </td>
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <!-- 日記帳分頁 -->
+            <div class="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700">
+              <span class="text-xs text-slate-500 dark:text-slate-400">
+                共 {{ filteredVouchers.length }} 筆，第 {{ voucherPage }}/{{ voucherTotalPages }} 頁
+              </span>
+              <div class="flex items-center gap-1">
+                <button
+                  :disabled="voucherPage === 1"
+                  @click="voucherPage--"
+                  class="px-2.5 py-1.5 text-xs rounded-md transition-all"
+                  :class="voucherPage === 1 ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600'"
+                >
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span v-if="voucherVisiblePages[0] > 1" class="px-1 text-xs text-slate-400">…</span>
+                <button
+                  v-for="p in voucherVisiblePages"
+                  :key="p"
+                  @click="voucherPage = p"
+                  class="w-7 h-7 text-xs rounded-md transition-all"
+                  :class="voucherPage === p
+                    ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-white font-semibold shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
+                >{{ p }}</button>
+                <span v-if="voucherVisiblePages[voucherVisiblePages.length - 1] < voucherTotalPages" class="px-1 text-xs text-slate-400">…</span>
+                <button
+                  :disabled="voucherPage === voucherTotalPages"
+                  @click="voucherPage++"
+                  class="px-2.5 py-1.5 text-xs rounded-md transition-all"
+                  :class="voucherPage === voucherTotalPages ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:text-amber-600'"
+                >
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -652,7 +772,7 @@ onMounted(async () => {
                   </tr>
 
                   <tr class="bg-purple-50/50 dark:bg-purple-900/10">
-                    <td class="px-5 py-2 font-semibold text-purple-700 dark:text-purple-400" colspan="2">業主權益</td>
+                    <td class="px-5 py-2 font-semibold text-purple-700 dark:text-purple-400" colspan="2">投入</td>
                   </tr>
                   <tr
                     v-for="item in balanceSheetData.equity"
@@ -663,13 +783,13 @@ onMounted(async () => {
                     <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ item.amount.toLocaleString() }}</td>
                   </tr>
                   <tr class="border-b border-slate-200 dark:border-slate-700 font-semibold">
-                    <td class="px-5 py-2 text-purple-700 dark:text-purple-400">業主權益合計</td>
+                    <td class="px-5 py-2 text-purple-700 dark:text-purple-400">投入合計</td>
                     <td class="px-5 py-2 text-right font-mono text-purple-700 dark:text-purple-400">${{ totalEquity.toLocaleString() }}</td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr class="border-t-2 border-slate-300 dark:border-slate-600 font-bold">
-                    <td class="px-5 py-3 text-slate-900 dark:text-stone-50">負債 + 業主權益合計</td>
+                    <td class="px-5 py-3 text-slate-900 dark:text-stone-50">負債及投入總計</td>
                     <td class="px-5 py-3 text-right font-mono text-slate-900 dark:text-stone-50">${{ (totalLiabilities + totalEquity).toLocaleString() }}</td>
                   </tr>
                 </tfoot>
@@ -776,6 +896,12 @@ onMounted(async () => {
                   <button class="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:text-amber-700 active:scale-95 transition-transform" @click="addVoucherEntry">
                     <i class="fa-solid fa-plus"></i> 新增分錄
                   </button>
+                </div>
+                <div class="grid grid-cols-[1fr_120px_120px_40px] gap-2 mb-1 px-1">
+                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400">科目</span>
+                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400 pl-[5px]">借方</span>
+                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400 pl-[5px]">貸方</span>
+                  <span></span>
                 </div>
                 <div class="space-y-2">
                   <div

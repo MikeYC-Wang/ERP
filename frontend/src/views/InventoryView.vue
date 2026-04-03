@@ -23,13 +23,7 @@ interface Product {
   price: number
 }
 
-const products = ref<Product[]>([
-  { id: 1, sku: 'PF-001', name: '高級犬糧 5kg', unit: '袋', price: 45.00 },
-  { id: 2, sku: 'CT-002', name: '貓咪玩具組', unit: '組', price: 12.50 },
-  { id: 3, sku: 'AS-003', name: '水族箱入門套組', unit: '組', price: 89.99 },
-  { id: 4, sku: 'BT-004', name: '鳥類綜合零食 500g', unit: '包', price: 8.75 },
-  { id: 5, sku: 'DL-005', name: '犬用尼龍牽繩', unit: '條', price: 15.00 },
-])
+const products = ref<Product[]>([])
 
 const showProductModal = ref(false)
 const editingProduct = ref<Product | null>(null)
@@ -50,7 +44,8 @@ function openEditProduct(product: Product) {
 async function saveProduct() {
   if (editingProduct.value) {
     try {
-      await updateProduct(editingProduct.value.id, productForm.value)
+      const { price, ...rest } = productForm.value
+      await updateProduct(editingProduct.value.id, { ...rest, current_price: price })
     } catch (e) {
       console.warn('Failed to update product via API, applying locally', e)
     }
@@ -60,8 +55,10 @@ async function saveProduct() {
     }
   } else {
     try {
-      const res = await createProduct(productForm.value)
-      products.value.push(res.data)
+      const { price: formPrice, ...formRest } = productForm.value
+      const res = await createProduct({ ...formRest, current_price: formPrice })
+      const p = res.data
+      products.value.push({ id: p.id, sku: p.sku, name: p.name, unit: p.unit, price: Number(p.current_price ?? 0) })
       showProductModal.value = false
       return
     } catch (e) {
@@ -94,16 +91,7 @@ interface StockBatch {
   receivedDate: string
 }
 
-const stockBatches = ref<StockBatch[]>([
-  { id: 1, productName: '高級犬糧 5kg', sku: 'PF-001', batchNumber: 'B-2026-001', quantity: 100, remainingQuantity: 42, unitCost: 32.00, receivedDate: '2026-01-15' },
-  { id: 2, productName: '貓咪玩具組', sku: 'CT-002', batchNumber: 'B-2026-002', quantity: 200, remainingQuantity: 3, unitCost: 6.50, receivedDate: '2026-01-20' },
-  { id: 3, productName: '水族箱入門套組', sku: 'AS-003', batchNumber: 'B-2026-003', quantity: 30, remainingQuantity: 18, unitCost: 55.00, receivedDate: '2026-02-01' },
-  { id: 4, productName: '鳥類綜合零食 500g', sku: 'BT-004', batchNumber: 'B-2026-004', quantity: 150, remainingQuantity: 2, unitCost: 4.50, receivedDate: '2026-02-10' },
-  { id: 5, productName: '犬用尼龍牽繩', sku: 'DL-005', batchNumber: 'B-2026-005', quantity: 80, remainingQuantity: 5, unitCost: 8.00, receivedDate: '2026-02-15' },
-  { id: 6, productName: '高級犬糧 5kg', sku: 'PF-001', batchNumber: 'B-2026-006', quantity: 50, remainingQuantity: 50, unitCost: 33.00, receivedDate: '2026-03-01' },
-  { id: 7, productName: '貓咪玩具組', sku: 'CT-002', batchNumber: 'B-2026-007', quantity: 100, remainingQuantity: 85, unitCost: 6.80, receivedDate: '2026-03-10' },
-  { id: 8, productName: '水族箱入門套組', sku: 'AS-003', batchNumber: 'B-2026-008', quantity: 20, remainingQuantity: 1, unitCost: 56.00, receivedDate: '2026-03-20' },
-])
+const stockBatches = ref<StockBatch[]>([])
 
 const stockFilter = ref('all')
 
@@ -125,20 +113,36 @@ onMounted(async () => {
       getProducts().catch(() => null),
       getInventoryBatches().catch(() => null),
     ])
-    if (productsRes?.data && Array.isArray(productsRes.data)) {
-      products.value = productsRes.data
-    }
-    if (batchesRes?.data && Array.isArray(batchesRes.data)) {
-      stockBatches.value = batchesRes.data.map((b: Record<string, unknown>) => ({
-        id: b.id as number,
-        productName: (b.product_name as string) || '',
-        sku: (b.sku as string) || '',
-        batchNumber: (b.batch_number as string) || '',
-        quantity: b.quantity as number,
-        remainingQuantity: b.remaining_quantity as number,
-        unitCost: b.unit_cost as number,
-        receivedDate: (b.received_date as string) || '',
+    if (productsRes?.data) {
+      const productList = Array.isArray(productsRes.data) ? productsRes.data : productsRes.data?.results ?? []
+      products.value = productList.map((p: Record<string, unknown>) => ({
+        id: p.id as number,
+        sku: p.sku as string,
+        name: p.name as string,
+        unit: p.unit as string,
+        price: Number(p.current_price ?? 0),
       }))
+    }
+    // Build a product lookup map for resolving FK ids to names/skus
+    const productMap = new Map<number, Product>()
+    for (const p of products.value) {
+      productMap.set(p.id, p)
+    }
+    if (batchesRes?.data) {
+      const batchList = Array.isArray(batchesRes.data) ? batchesRes.data : batchesRes.data?.results ?? []
+      stockBatches.value = batchList.map((b: Record<string, unknown>) => {
+        const prod = productMap.get(b.product as number)
+        return {
+          id: b.id as number,
+          productName: prod?.name ?? '',
+          sku: prod?.sku ?? '',
+          batchNumber: `BATCH-${b.id}`,
+          quantity: Number(b.batch_quantity ?? 0),
+          remainingQuantity: Number(b.remaining_quantity ?? 0),
+          unitCost: Number(b.unit_cost ?? 0),
+          receivedDate: (b.received_date as string) || '',
+        }
+      })
     }
   } catch (e) {
     console.warn('Inventory API unavailable, using fallback data', e)
@@ -219,7 +223,7 @@ onMounted(async () => {
                     <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ product.sku }}</td>
                     <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ product.name }}</td>
                     <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ product.unit }}</td>
-                    <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ product.price.toFixed(2) }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ Number(product.price ?? 0).toFixed(2) }}</td>
                     <td class="px-5 py-3 text-right">
                       <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all mr-2" @click="openEditProduct(product)">
                         <i class="fa-solid fa-pen-to-square"></i> 編輯
@@ -283,7 +287,7 @@ onMounted(async () => {
                       {{ batch.remainingQuantity }}
                       <i v-if="batch.remainingQuantity <= 5" class="fa-solid fa-triangle-exclamation text-red-500 ml-1 text-xs animate-pulse"></i>
                     </td>
-                    <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ batch.unitCost.toFixed(2) }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ Number(batch.unitCost ?? 0).toFixed(2) }}</td>
                     <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ batch.receivedDate }}</td>
                   </tr>
                 </tbody>
