@@ -525,7 +525,7 @@ onMounted(async () => {
           :key="tab.key"
           class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all duration-300"
           :class="activeTab === tab.key
-            ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-md'
+            ? 'bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-md'
             : 'text-slate-600 dark:text-slate-400 hover:text-amber-600'"
           @click="activeTab = tab.key"
         >
@@ -547,7 +547,7 @@ onMounted(async () => {
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">會計科目</h2>
             <button
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
               @click="openAddSubject"
             >
               <i class="fa-solid fa-plus text-xs"></i>
@@ -613,7 +613,7 @@ onMounted(async () => {
                   @click="subjectPage = p"
                   class="w-7 h-7 text-xs rounded-md transition-all"
                   :class="subjectPage === p
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white font-semibold shadow-sm'
+                    ? 'bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white font-semibold shadow-sm'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
                 >{{ p }}</button>
                 <span v-if="subjectVisiblePages[subjectVisiblePages.length - 1] < subjectTotalPages" class="px-1 text-xs text-slate-400">…</span>
@@ -651,7 +651,7 @@ onMounted(async () => {
               </select>
             </div>
             <button
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
               @click="openAddVoucher"
             >
               <i class="fa-solid fa-plus text-xs"></i>
@@ -737,7 +737,7 @@ onMounted(async () => {
                   @click="voucherPage = p"
                   class="w-7 h-7 text-xs rounded-md transition-all"
                   :class="voucherPage === p
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white font-semibold shadow-sm'
+                    ? 'bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white font-semibold shadow-sm'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
                 >{{ p }}</button>
                 <span v-if="voucherVisiblePages[voucherVisiblePages.length - 1] < voucherTotalPages" class="px-1 text-xs text-slate-400">…</span>
@@ -770,7 +770,7 @@ onMounted(async () => {
                   :key="report.key"
                   class="px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-300"
                   :class="activeReport === report.key
-                    ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-sm'
+                    ? 'bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-sm'
                     : 'text-slate-500 dark:text-slate-400 hover:text-amber-600'"
                   @click="activeReport = report.key"
                 >
@@ -1025,7 +1025,7 @@ onMounted(async () => {
               <button class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg active:scale-95 transition-all" @click="showSubjectModal = false">
                 取消
               </button>
-              <button class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="saveSubject">
+              <button class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="saveSubject">
                 儲存
               </button>
             </div>
@@ -1150,7 +1150,7 @@ onMounted(async () => {
               </button>
               <button
                 class="px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
-                :class="isBalanced ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C]' : 'bg-slate-300 dark:bg-slate-600 cursor-not-allowed'"
+                :class="isBalanced ? 'bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C]' : 'bg-slate-300 dark:bg-slate-600 cursor-not-allowed'"
                 :disabled="!isBalanced"
                 @click="saveVoucher"
               >
@@ -1237,7 +1237,7 @@ onMounted(async () => {
 
             <div class="flex justify-end mt-5">
               <button
-                class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
+                class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all"
                 @click="showViewModal = false"
               >
                 關閉
