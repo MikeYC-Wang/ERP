@@ -618,7 +618,7 @@ onMounted(async () => {
               @click="journalPage = p"
               class="w-7 h-7 text-xs rounded-md transition-all"
               :class="journalPage === p
-                ? 'bg-gradient-to-r from-[#C9A47A] to-[#A07848] text-white font-semibold shadow-sm'
+                ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white font-semibold shadow-sm'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'"
             >{{ p }}</button>
             <span v-if="journalVisiblePages[journalVisiblePages.length - 1] < journalTotalPages" class="px-1 text-xs text-slate-400">…</span>

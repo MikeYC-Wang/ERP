@@ -250,7 +250,7 @@ onMounted(async () => {
           :key="tab.key"
           class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all duration-300"
           :class="activeTab === tab.key
-            ? 'bg-gradient-to-r from-[#C9A47A] to-[#A07848] text-white shadow-md'
+            ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-md'
             : 'text-slate-600 dark:text-slate-400 hover:text-amber-600'"
           @click="activeTab = tab.key"
         >
@@ -276,7 +276,7 @@ onMounted(async () => {
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">商品管理</h2>
             <button
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#C9A47A] to-[#A07848] hover:from-[#B8936A] hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
               @click="openAddProduct"
             >
               <i class="fa-solid fa-plus text-xs"></i>
@@ -536,7 +536,7 @@ onMounted(async () => {
               <button class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg active:scale-95 transition-all" @click="showProductModal = false">
                 取消
               </button>
-              <button class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#C9A47A] to-[#A07848] hover:from-[#B8936A] hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="saveProduct">
+              <button class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-amber-500 hover:to-amber-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="saveProduct">
                 儲存
               </button>
             </div>

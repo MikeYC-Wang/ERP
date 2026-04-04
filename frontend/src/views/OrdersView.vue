@@ -144,7 +144,7 @@ watch(activeTab, () => {
           :key="tab.key"
           class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-all duration-300"
           :class="activeTab === tab.key
-            ? 'bg-gradient-to-r from-[#C9A47A] to-[#A07848] text-white shadow-md'
+            ? 'bg-gradient-to-r from-amber-400 to-amber-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-md'
             : 'text-slate-600 dark:text-slate-400 hover:text-amber-600'"
           @click="activeTab = tab.key"
         >
