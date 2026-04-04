@@ -116,7 +116,7 @@ function handleClearCache() {
 
         <div class="flex gap-3">
           <button
-            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#C9A47A] to-[#A07848] hover:from-[#B8936A] hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
             @click="handleExport"
           >
             <i class="fa-solid fa-file-export text-xs"></i>
