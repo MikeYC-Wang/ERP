@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import jsPDF from 'jspdf'
 import {
   getProducts,
   createProduct,
@@ -255,6 +256,69 @@ async function removePurchase(id: number) {
   if (!confirm('確定要刪除此採購單？')) return
   await deletePurchaseOrder(id)
   purchaseOrders.value = purchaseOrders.value.filter(p => p.id !== id)
+}
+
+function exportPurchasePDF(po: PurchaseOrder) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const pageW = doc.internal.pageSize.getWidth()
+
+  // Header
+  doc.setFontSize(18)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Purchase Order', pageW / 2, 20, { align: 'center' })
+
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`PO Number : ${po.order_number}`, 14, 35)
+  doc.text(`Supplier  : ${po.supplier}`, 14, 42)
+  doc.text(`Date      : ${po.date}`, 14, 49)
+  doc.text(`Status    : ${STATUS_LABELS[po.status] ?? po.status}`, 14, 56)
+
+  // Table header
+  let y = 68
+  doc.setFillColor(80, 60, 120)
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.rect(14, y - 5, pageW - 28, 8, 'F')
+  doc.text('Product ID', 16, y)
+  doc.text('Qty', 80, y)
+  doc.text('Unit Price', 105, y)
+  doc.text('Amount', 150, y)
+
+  // Table rows
+  doc.setTextColor(0, 0, 0)
+  doc.setFont('helvetica', 'normal')
+  let total = 0
+  po.items.forEach((item, i) => {
+    y += 10
+    if (i % 2 === 0) {
+      doc.setFillColor(245, 245, 250)
+      doc.rect(14, y - 5, pageW - 28, 8, 'F')
+    }
+    const prod = products.value.find(p => p.id === item.product)
+    const name = prod ? `${prod.name} (${prod.sku})` : `Product #${item.product}`
+    const amount = Number(item.fee) * Number(item.quantity)
+    total += amount
+    doc.text(name.substring(0, 38), 16, y)
+    doc.text(String(item.quantity), 80, y)
+    doc.text(`$${Number(item.fee).toFixed(2)}`, 105, y)
+    doc.text(`$${amount.toFixed(2)}`, 150, y)
+  })
+
+  // Total
+  y += 12
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.text(`Total: $${total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, pageW - 14, y, { align: 'right' })
+
+  // Footer
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(150, 150, 150)
+  doc.text('PerPetsStore ERP — Generated automatically', pageW / 2, 285, { align: 'center' })
+
+  doc.save(`${po.order_number}.pdf`)
 }
 
 async function confirmReceive(id: number) {
@@ -653,6 +717,10 @@ onMounted(async () => {
                       <button v-if="po.status === 'draft'" @click="removePurchase(po.id)"
                         class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-red-400 to-rose-500 hover:from-red-500 hover:to-rose-600 rounded hover:shadow-sm transition-all">
                         <i class="fa-solid fa-trash"></i> 刪除
+                      </button>
+                      <button @click="exportPurchasePDF(po)"
+                        class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 rounded hover:shadow-sm transition-all ml-1">
+                        <i class="fa-solid fa-file-pdf"></i> PDF
                       </button>
                     </td>
                   </tr>

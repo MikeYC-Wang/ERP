@@ -184,13 +184,29 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, required=False)
+    order_number = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Order
         fields = '__all__'
 
+    @staticmethod
+    def _generate_order_number(date):
+        prefix = f"SO-{date.strftime('%Y%m')}-"
+        last = (
+            Order.objects
+            .filter(order_number__startswith=prefix)
+            .order_by('-order_number')
+            .values_list('order_number', flat=True)
+            .first()
+        )
+        seq = int(last.split('-')[-1]) + 1 if last else 1
+        return f"{prefix}{str(seq).zfill(3)}"
+
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
+        if not validated_data.get('order_number'):
+            validated_data['order_number'] = self._generate_order_number(validated_data.get('order_date'))
         order = Order.objects.create(**validated_data)
         for item_data in items_data:
             item_data.pop('order', None)

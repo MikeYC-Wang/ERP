@@ -227,6 +227,14 @@ class Order(models.Model):
 
     order_number = models.CharField('訂單編號', max_length=30, unique=True)
     customer_name = models.CharField('客戶名稱', max_length=200)
+    customer_ref = models.ForeignKey(
+        'Customer',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+        verbose_name='客戶',
+    )
     order_date = models.DateField('訂單日期')
     status = models.CharField('狀態', max_length=20, choices=Status.choices, default=Status.PENDING)
     total_amount = models.DecimalField('總金額', max_digits=14, decimal_places=2, default=0)

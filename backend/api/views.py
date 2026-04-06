@@ -165,6 +165,24 @@ class MeView(APIView):
         return Response({'id': user.id, 'username': user.username, 'email': user.email})
 
 
+class ChangePasswordView(APIView):
+    """POST /api/auth/change-password/"""
+
+    def post(self, request):
+        user = request.user
+        old_password = request.data.get('old_password', '')
+        new_password = request.data.get('new_password', '')
+
+        if not user.check_password(old_password):
+            return Response({'error': '舊密碼不正確'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 6:
+            return Response({'error': '新密碼至少需要 6 個字元'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'message': '密碼已更新成功'})
+
+
 # ---------------------------------------------------------------------------
 # Supplier / Customer ViewSets
 # ---------------------------------------------------------------------------

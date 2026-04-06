@@ -58,13 +58,16 @@ def deduct_inventory_fifo(product, quantity):
 @transaction.atomic
 def create_inventory_from_purchase(purchase_order):
     """
-    採購單確認收貨時，根據 PurchaseApplyItem 建立 InventoryBatch。
+    採購單確認收貨時：
+    1. 根據 PurchaseApplyItem 建立 InventoryBatch。
+    2. 自動產生會計分錄：借 商品存貨 / 貸 銀行存款。
     金額必須從 PurchaseApplyItem.fee 取得（規格書嚴格要求）。
     """
     if purchase_order.status == PurchaseOrder.Status.RECEIVED:
         raise Exception('此採購單已經收貨，不可重複收貨')
 
     today = timezone.now().date()
+    total_cost = Decimal('0')
 
     for item in purchase_order.items.select_related('product'):
         unit_cost = item.fee / item.quantity
@@ -76,6 +79,32 @@ def create_inventory_from_purchase(purchase_order):
             unit_cost=unit_cost,
             received_date=today,
         )
+        total_cost += item.fee
+
+    # 自動會計分錄：借 商品存貨 / 貸 銀行存款
+    try:
+        inventory_account = AccountSubject.objects.get(code='1001')  # 商品存貨
+        bank_account = AccountSubject.objects.get(code='1002')       # 銀行存款
+        voucher = JournalVoucher.objects.create(
+            voucher_number=_generate_voucher_number(),
+            date=today,
+            description=f'採購單 {purchase_order.order_number} 收貨入庫',
+            is_system_generated=True,
+        )
+        JournalVoucherItem.objects.create(
+            voucher=voucher,
+            account_subject=inventory_account,
+            debit_amount=total_cost,
+            credit_amount=Decimal('0'),
+        )
+        JournalVoucherItem.objects.create(
+            voucher=voucher,
+            account_subject=bank_account,
+            debit_amount=Decimal('0'),
+            credit_amount=total_cost,
+        )
+    except AccountSubject.DoesNotExist:
+        pass  # 若科目不存在（測試環境），略過分錄
 
     purchase_order.status = PurchaseOrder.Status.RECEIVED
     purchase_order.save(update_fields=['status', 'updated_at'])

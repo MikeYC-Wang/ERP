@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import (
     AccountSubjectViewSet,
+    ChangePasswordView,
     CustomerViewSet,
     DashboardExpenseBreakdownView,
     DashboardMonthlyTrendView,
@@ -43,6 +44,7 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/me/', MeView.as_view(), name='auth-me'),
+    path('auth/change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
     # Inventory Stock Summary
     path('inventory/stock-summary/', InventoryStockSummaryView.as_view(), name='inventory-stock-summary'),
     # Dashboard APIs

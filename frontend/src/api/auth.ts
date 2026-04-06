@@ -16,3 +16,7 @@ export function refreshApi(refresh: string): Promise<AxiosResponse> {
 export function getMeApi(): Promise<AxiosResponse> {
   return apiClient.get('auth/me/')
 }
+
+export function changePasswordApi(data: { old_password: string; new_password: string }): Promise<AxiosResponse> {
+  return apiClient.post('auth/change-password/', data)
+}
