@@ -14,6 +14,7 @@ const menuItems = [
   { name: '會計',   path: '/accounting', icon: 'fa-solid fa-file-invoice-dollar' },
   { name: '進銷存', path: '/inventory',  icon: 'fa-solid fa-boxes-stacked' },
   { name: '訂單',   path: '/orders',     icon: 'fa-solid fa-cart-shopping' },
+  { name: '聯絡人', path: '/contacts',   icon: 'fa-solid fa-address-book' },
   { name: '設定',   path: '/settings',   icon: 'fa-solid fa-gear' },
 ]
 

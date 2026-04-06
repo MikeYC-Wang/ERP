@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useThemeStore } from '../../stores/theme'
+import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const themeStore = useThemeStore()
+const authStore = useAuthStore()
 
 const rotated = ref(false)
 
@@ -17,6 +20,11 @@ const pageTitle = computed(() => (route.meta.title as string) || '儀表板')
 function handleToggleTheme() {
   rotated.value = !rotated.value
   themeStore.toggleTheme()
+}
+
+function logout() {
+  authStore.logout()
+  router.push('/login')
 }
 </script>
 
@@ -80,19 +88,29 @@ function handleToggleTheme() {
       <div class="w-px h-6" style="background: var(--border-soft)"></div>
 
       <!-- User -->
-      <div class="flex items-center gap-2 cursor-pointer group">
-        <div
-          class="relative w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110"
-          style="background: var(--bg-elevated); box-shadow: 0 0 12px var(--accent-glow)"
-        >
-          <i class="fa-solid fa-user text-sm" style="color: var(--accent)"></i>
-          <!-- Online indicator -->
-          <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
-                style="background: #22C55E; border-color: var(--bg-surface)"></span>
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 cursor-default">
+          <div
+            class="relative w-8 h-8 rounded-full flex items-center justify-center"
+            style="background: var(--bg-elevated); box-shadow: 0 0 12px var(--accent-glow)"
+          >
+            <i class="fa-solid fa-user text-sm" style="color: var(--accent)"></i>
+            <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
+                  style="background: #22C55E; border-color: var(--bg-surface)"></span>
+          </div>
+          <span class="text-sm font-medium hidden sm:inline" style="color: var(--text-primary)">
+            {{ authStore.username || 'Admin' }}
+          </span>
         </div>
-        <span class="text-sm font-medium hidden sm:inline" style="color: var(--text-primary)">
-          Mike
-        </span>
+        <!-- Logout -->
+        <button
+          @click="logout"
+          class="w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 hover:-translate-y-0.5 hover:text-red-500"
+          style="background: var(--bg-elevated); color: var(--text-muted)"
+          title="登出"
+        >
+          <i class="fa-solid fa-right-from-bracket text-sm"></i>
+        </button>
       </div>
     </div>
   </header>

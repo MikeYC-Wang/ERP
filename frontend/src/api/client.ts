@@ -29,7 +29,10 @@ apiClient.interceptors.response.use(
     if (error.response) {
       const status = error.response.status
       if (status === 401) {
-        console.error('Unauthorized - redirecting to login')
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        localStorage.removeItem('username')
+        window.location.href = '/login'
       } else if (status === 403) {
         console.error('Forbidden - insufficient permissions')
       } else if (status === 500) {

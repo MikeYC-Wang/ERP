@@ -21,18 +21,20 @@ export interface InventoryBatch {
   received_date: string
 }
 
+export interface PurchaseOrderItem {
+  id?: number
+  product: number
+  quantity: number
+  fee: number
+}
+
 export interface PurchaseOrder {
   id: number
   order_number: string
   supplier: string
+  date: string
   status: string
   items: PurchaseOrderItem[]
-}
-
-export interface PurchaseOrderItem {
-  product: number
-  quantity: number
-  unit_cost: number
 }
 
 export function getProducts(params?: Record<string, unknown>): Promise<AxiosResponse> {
@@ -65,6 +67,14 @@ export function createPurchaseOrder(data: Partial<PurchaseOrder>): Promise<Axios
 
 export function receivePurchaseOrder(id: number): Promise<AxiosResponse> {
   return apiClient.post(`purchase-orders/${id}/receive/`)
+}
+
+export function updatePurchaseOrder(id: number, data: Partial<PurchaseOrder>): Promise<AxiosResponse> {
+  return apiClient.put(`purchase-orders/${id}/`, data)
+}
+
+export function deletePurchaseOrder(id: number): Promise<AxiosResponse> {
+  return apiClient.delete(`purchase-orders/${id}/`)
 }
 
 export function getStockSummary(): Promise<AxiosResponse> {

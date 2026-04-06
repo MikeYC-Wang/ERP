@@ -73,6 +73,46 @@ class JournalVoucherItem(models.Model):
         return f'{self.voucher.voucher_number} - {self.account_subject.name}'
 
 
+class Supplier(models.Model):
+    """供應商"""
+
+    name = models.CharField('供應商名稱', max_length=200)
+    contact_name = models.CharField('聯絡人', max_length=100, blank=True, default='')
+    phone = models.CharField('電話', max_length=50, blank=True, default='')
+    email = models.EmailField('Email', blank=True, default='')
+    address = models.TextField('地址', blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '供應商'
+        verbose_name_plural = '供應商'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class Customer(models.Model):
+    """客戶"""
+
+    name = models.CharField('客戶名稱', max_length=200)
+    contact_name = models.CharField('聯絡人', max_length=100, blank=True, default='')
+    phone = models.CharField('電話', max_length=50, blank=True, default='')
+    email = models.EmailField('Email', blank=True, default='')
+    address = models.TextField('地址', blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '客戶'
+        verbose_name_plural = '客戶'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Product(models.Model):
     """商品/SKU"""
 

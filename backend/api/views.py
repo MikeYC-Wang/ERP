@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from .models import (
     AccountSubject,
+    Customer,
     InventoryBatch,
     JournalVoucher,
     JournalVoucherItem,
@@ -20,9 +21,11 @@ from .models import (
     Product,
     PurchaseApplyItem,
     PurchaseOrder,
+    Supplier,
 )
 from .serializers import (
     AccountSubjectSerializer,
+    CustomerSerializer,
     InventoryBatchSerializer,
     JournalVoucherItemSerializer,
     JournalVoucherSerializer,
@@ -31,8 +34,14 @@ from .serializers import (
     ProductSerializer,
     PurchaseApplyItemSerializer,
     PurchaseOrderSerializer,
+    SupplierSerializer,
+    UserRegisterSerializer,
 )
+from django.contrib.auth.models import User
 from django.db.models import IntegerField
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.tokens import RefreshToken
+from .serializers import CustomerSerializer, SupplierSerializer, UserRegisterSerializer
 from .services import complete_order, create_inventory_from_purchase
 
 
@@ -124,6 +133,64 @@ class OrderViewSet(viewsets.ModelViewSet):
 class OrderItemViewSet(viewsets.ModelViewSet):
     queryset = OrderItem.objects.all()
     serializer_class = OrderItemSerializer
+
+
+# ---------------------------------------------------------------------------
+# Auth Views
+# ---------------------------------------------------------------------------
+
+class RegisterView(APIView):
+    """POST /api/auth/register/"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = UserRegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'username': user.username,
+                'email': user.email,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MeView(APIView):
+    """GET /api/auth/me/"""
+
+    def get(self, request):
+        user = request.user
+        return Response({'id': user.id, 'username': user.username, 'email': user.email})
+
+
+# ---------------------------------------------------------------------------
+# Supplier / Customer ViewSets
+# ---------------------------------------------------------------------------
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    queryset = Supplier.objects.all()
+    serializer_class = SupplierSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get('search', '')
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return qs
+
+
+class CustomerViewSet(viewsets.ModelViewSet):
+    queryset = Customer.objects.all()
+    serializer_class = CustomerSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get('search', '')
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return qs
 
 
 # ---------------------------------------------------------------------------
