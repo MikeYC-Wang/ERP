@@ -103,8 +103,12 @@ def create_inventory_from_purchase(purchase_order):
             debit_amount=Decimal('0'),
             credit_amount=total_cost,
         )
-    except AccountSubject.DoesNotExist:
-        pass  # 若科目不存在（測試環境），略過分錄
+    except AccountSubject.DoesNotExist as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            '採購收貨自動分錄失敗：找不到對應科目 (code=1001 商品存貨 or code=1002 銀行存款). '
+            '請確認會計科目已正確設定。Error: %s', exc
+        )
 
     purchase_order.status = PurchaseOrder.Status.RECEIVED
     purchase_order.save(update_fields=['status', 'updated_at'])

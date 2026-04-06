@@ -6,7 +6,7 @@ export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref<string | null>(localStorage.getItem('access_token'))
   const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'))
   const username = ref<string>(localStorage.getItem('username') ?? '')
-  const email = ref<string>('')
+  const email = ref<string>(localStorage.getItem('email') ?? '')
 
   const isAuthenticated = computed(() => !!accessToken.value)
 
@@ -21,6 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
     username.value = name
     email.value = userEmail
     localStorage.setItem('username', name)
+    localStorage.setItem('email', userEmail)
   }
 
   async function login(user: string, password: string) {
@@ -46,6 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('username')
+    localStorage.removeItem('email')
   }
 
   return { accessToken, refreshToken, username, email, isAuthenticated, login, logout, fetchMe, setTokens, setUser }

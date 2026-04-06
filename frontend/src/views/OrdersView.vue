@@ -85,7 +85,11 @@ function removeOrderItem(idx: number) {
 
 function onCustomerSelect() {
   const c = customers.value.find(c => c.id === orderForm.value.customer_ref)
-  if (c) orderForm.value.customer_name = c.name
+  if (c) {
+    orderForm.value.customer_name = c.name
+    // customer_ref is already set via v-model, but ensure it's a number not string
+    orderForm.value.customer_ref = c.id
+  }
 }
 
 function onProductSelect(idx: number) {

@@ -259,6 +259,7 @@ async function removePurchase(id: number) {
 }
 
 function exportPurchasePDF(po: PurchaseOrder) {
+  try {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageW = doc.internal.pageSize.getWidth()
 
@@ -319,6 +320,10 @@ function exportPurchasePDF(po: PurchaseOrder) {
   doc.text('PerPetsStore ERP — Generated automatically', pageW / 2, 285, { align: 'center' })
 
   doc.save(`${po.order_number}.pdf`)
+  } catch (e) {
+    console.error('PDF 匯出失敗', e)
+    alert('PDF 匯出失敗，請稍後再試')
+  }
 }
 
 async function confirmReceive(id: number) {
