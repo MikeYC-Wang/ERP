@@ -599,8 +599,8 @@ onMounted(async () => {
         </div>
         <!-- 傳票記錄分頁 -->
         <div class="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700">
-          <span class="text-xs text-slate-500 dark:text-slate-400">
-            共 {{ journalEntries.length }} 筆，第 {{ journalPage }}/{{ journalTotalPages }} 頁
+          <span class="text-xs text-slate-500 dark:text-slate-400 leading-tight">
+            <span class="block md:inline">共 {{ journalEntries.length }} 筆</span><span class="hidden md:inline">，</span><span class="block md:inline">第 {{ journalPage }}/{{ journalTotalPages }} 頁</span>
           </span>
           <div class="flex items-center gap-1">
             <button

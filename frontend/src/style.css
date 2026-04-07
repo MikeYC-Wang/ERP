@@ -384,16 +384,22 @@ body {
      should allow vertical scrolling and pad nicely on small screens. */
   .fixed.inset-0.z-50 {
     padding: 0.75rem !important;
-    overflow-y: auto !important;
-    align-items: flex-start !important;
   }
   .fixed.inset-0.z-50 > .relative {
     max-width: 100% !important;
     width: 100% !important;
     max-height: calc(100vh - 1.5rem) !important;
-    margin: 0.5rem !important;
+    margin: 0 !important;
     overflow-y: auto;
   }
+
+  /* Arbitrary-value grids (e.g. grid-cols-[1fr_1fr_140px_40px]) collapse to a
+     single column on mobile so children wrap instead of overflowing. */
+  .grid[class*="grid-cols-["] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Hide column-header rows that only make sense in the desktop grid layout. */
+  .mobile-hide { display: none !important; }
 
 
   /* Filter bars and toolbars using `flex` with horizontal items: stack them. */
@@ -423,7 +429,7 @@ body {
     scrollbar-width: none;
   }
   nav.flex::-webkit-scrollbar { display: none; }
-  nav.flex > * { flex-shrink: 0; }
+  nav.flex > * { flex-shrink: 0; white-space: nowrap; }
 
   /* Reduce default page padding for more content room */
   main { padding: 0.75rem !important; }

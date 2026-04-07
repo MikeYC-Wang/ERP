@@ -916,9 +916,9 @@ onMounted(async () => {
       <!-- Tab 3: Financial Reports -->
       <Transition name="fade" mode="out-in">
         <div v-if="activeTab === 'reports'" key="reports">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
             <div class="flex items-center gap-3">
-              <div class="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+              <div class="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1 w-full md:w-auto">
                 <button
                   v-for="report in ([
                     { key: 'trial', label: '試算表' },
@@ -926,7 +926,7 @@ onMounted(async () => {
                     { key: 'balance', label: '資產負債表' },
                   ] as const)"
                   :key="report.key"
-                  class="px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-300"
+                  class="flex-1 md:flex-none px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-all duration-300"
                   :class="activeReport === report.key
                     ? 'bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] text-white shadow-sm'
                     : 'text-slate-500 dark:text-slate-400 hover:text-amber-600'"
@@ -936,7 +936,7 @@ onMounted(async () => {
                 </button>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <select
                 v-model="selectedReportYear"
                 class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
@@ -1233,7 +1233,7 @@ onMounted(async () => {
                     <i class="fa-solid fa-plus"></i> 新增分錄
                   </button>
                 </div>
-                <div class="grid grid-cols-[1fr_1fr_140px_40px] gap-2 mb-1 px-1">
+                <div class="grid grid-cols-[1fr_1fr_140px_40px] gap-2 mb-1 px-1 mobile-hide">
                   <span class="text-xs font-medium text-slate-500 dark:text-slate-400">借方科目</span>
                   <span class="text-xs font-medium text-slate-500 dark:text-slate-400">貸方科目</span>
                   <span class="text-xs font-medium text-slate-500 dark:text-slate-400 pl-[5px]">金額</span>
