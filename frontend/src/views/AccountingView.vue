@@ -178,56 +178,107 @@ const voucherVisiblePages = computed(() => pageWindow(voucherPage.value, voucher
 watch([selectedJournalYear, selectedJournalMonth], () => { voucherPage.value = 1 })
 
 const showVoucherModal = ref(false)
+
+interface VoucherPair {
+  debitSubject: string
+  creditSubject: string
+  amount: number
+  amountInput: string
+}
+
+function makeEmptyPair(): VoucherPair {
+  return { debitSubject: '', creditSubject: '', amount: 0, amountInput: '' }
+}
+
 const voucherForm = ref({
   date: '',
   description: '',
-  entries: [
-    { accountSubject: '', debitAmount: 0, creditAmount: 0 },
-    { accountSubject: '', debitAmount: 0, creditAmount: 0 },
-  ] as VoucherEntry[],
+  pairs: [makeEmptyPair()] as VoucherPair[],
 })
 
 function openAddVoucher() {
   voucherForm.value = {
     date: '',
     description: '',
-    entries: [
-      { accountSubject: '', debitAmount: 0, creditAmount: 0 },
-      { accountSubject: '', debitAmount: 0, creditAmount: 0 },
-    ],
+    pairs: [makeEmptyPair()],
   }
   showVoucherModal.value = true
 }
 
 function addVoucherEntry() {
-  voucherForm.value.entries.push({ accountSubject: '', debitAmount: 0, creditAmount: 0 })
+  voucherForm.value.pairs.push(makeEmptyPair())
 }
 
 function removeVoucherEntry(index: number) {
-  if (voucherForm.value.entries.length > 2) {
-    voucherForm.value.entries.splice(index, 1)
+  if (voucherForm.value.pairs.length > 1) {
+    voucherForm.value.pairs.splice(index, 1)
+  }
+}
+
+// Safe formula evaluator: only digits, + - * / ( ) . and whitespace.
+// Strips a leading '='. Returns NaN on invalid input.
+function evaluateFormula(raw: string): number {
+  if (raw == null) return NaN
+  let s = String(raw).trim()
+  if (s === '') return NaN
+  if (s.startsWith('=')) s = s.slice(1).trim()
+  if (!/^[0-9+\-*/().\s]+$/.test(s)) return NaN
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(`"use strict"; return (${s});`)
+    const v = fn()
+    if (typeof v !== 'number' || !isFinite(v)) return NaN
+    return v
+  } catch {
+    return NaN
+  }
+}
+
+function commitAmount(pair: VoucherPair) {
+  const raw = pair.amountInput
+  if (raw == null || String(raw).trim() === '') {
+    pair.amount = 0
+    pair.amountInput = ''
+    return
+  }
+  // Plain number fast path
+  const asNum = Number(raw)
+  if (!isNaN(asNum) && !/[=+\-*/()]/.test(String(raw).trim().replace(/^-/, ''))) {
+    pair.amount = asNum
+    pair.amountInput = String(asNum)
+    return
+  }
+  const v = evaluateFormula(String(raw))
+  if (!isNaN(v)) {
+    const rounded = Math.round(v * 100) / 100
+    pair.amount = rounded
+    pair.amountInput = String(rounded)
   }
 }
 
 const totalDebit = computed(() =>
-  voucherForm.value.entries.reduce((sum, e) => sum + Number(e.debitAmount || 0), 0),
+  voucherForm.value.pairs.reduce((sum, p) => sum + Number(p.amount || 0), 0),
 )
-const totalCredit = computed(() =>
-  voucherForm.value.entries.reduce((sum, e) => sum + Number(e.creditAmount || 0), 0),
+const totalCredit = totalDebit
+const isBalanced = computed(() =>
+  totalDebit.value > 0 &&
+  voucherForm.value.pairs.every(
+    (p) => p.debitSubject !== '' && p.creditSubject !== '' && Number(p.amount) > 0,
+  ),
 )
-const isBalanced = computed(() => totalDebit.value === totalCredit.value && totalDebit.value > 0)
 
 async function saveVoucher() {
   if (!isBalanced.value) return
   try {
+    const items: Array<{ account_subject: number; debit_amount: number; credit_amount: number }> = []
+    voucherForm.value.pairs.forEach((p) => {
+      items.push({ account_subject: Number(p.debitSubject), debit_amount: Number(p.amount), credit_amount: 0 })
+      items.push({ account_subject: Number(p.creditSubject), debit_amount: 0, credit_amount: Number(p.amount) })
+    })
     const payload = {
       date: voucherForm.value.date,
       description: voucherForm.value.description,
-      items: voucherForm.value.entries.map((e) => ({
-        account_subject: Number(e.accountSubject),
-        debit_amount: e.debitAmount,
-        credit_amount: e.creditAmount,
-      })),
+      items,
     }
     const res = await createJournalVoucher(payload)
     const v = res.data as Record<string, unknown>
@@ -252,7 +303,10 @@ async function saveVoucher() {
       voucherNumber: `JV-${voucherForm.value.date.substring(0, 4)}-${String(newId).padStart(3, '0')}`,
       description: voucherForm.value.description,
       isSystemGenerated: false,
-      entries: [...voucherForm.value.entries],
+      entries: voucherForm.value.pairs.flatMap((p) => [
+        { accountSubject: p.debitSubject, debitAmount: Number(p.amount), creditAmount: 0 },
+        { accountSubject: p.creditSubject, debitAmount: 0, creditAmount: Number(p.amount) },
+      ]),
     })
   }
   showVoucherModal.value = false
@@ -1038,7 +1092,7 @@ onMounted(async () => {
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="showVoucherModal" class="fixed inset-0 z-50 flex items-center justify-center">
-          <div class="absolute inset-0 bg-black/40" @click="showVoucherModal = false"></div>
+          <div class="absolute inset-0 bg-black/40"></div>
           <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto modal-enter-active">
             <div class="flex items-center justify-between mb-5">
               <h3 class="text-lg font-semibold text-slate-900 dark:text-stone-50">新增傳票</h3>
@@ -1075,47 +1129,49 @@ onMounted(async () => {
                     <i class="fa-solid fa-plus"></i> 新增分錄
                   </button>
                 </div>
-                <div class="grid grid-cols-[1fr_120px_120px_40px] gap-2 mb-1 px-1">
-                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400">科目</span>
-                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400 pl-[5px]">借方</span>
-                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400 pl-[5px]">貸方</span>
+                <div class="grid grid-cols-[1fr_1fr_140px_40px] gap-2 mb-1 px-1">
+                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400">借方科目</span>
+                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400">貸方科目</span>
+                  <span class="text-xs font-medium text-slate-500 dark:text-slate-400 pl-[5px]">金額</span>
                   <span></span>
                 </div>
                 <div class="space-y-2">
                   <div
-                    v-for="(entry, index) in voucherForm.entries"
+                    v-for="(pair, index) in voucherForm.pairs"
                     :key="index"
-                    class="grid grid-cols-[1fr_120px_120px_40px] gap-2 items-center"
+                    class="grid grid-cols-[1fr_1fr_140px_40px] gap-2 items-center"
                   >
                     <select
-                      v-model="entry.accountSubject"
+                      v-model="pair.debitSubject"
                       class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      <option value="" disabled>選擇科目</option>
+                      <option value="" disabled>借方科目</option>
+                      <option v-for="subject in subjects" :key="subject.id" :value="subject.code">
+                        {{ subject.code }} - {{ subject.name }}
+                      </option>
+                    </select>
+                    <select
+                      v-model="pair.creditSubject"
+                      class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="" disabled>貸方科目</option>
                       <option v-for="subject in subjects" :key="subject.id" :value="subject.code">
                         {{ subject.code }} - {{ subject.name }}
                       </option>
                     </select>
                     <input
-                      v-model.number="entry.debitAmount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="借方"
-                      class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                    <input
-                      v-model.number="entry.creditAmount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="貸方"
-                      class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      v-model="pair.amountInput"
+                      type="text"
+                      inputmode="decimal"
+                      placeholder="金額 (=420*2)"
+                      class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                      @blur="commitAmount(pair)"
+                      @keydown.enter.prevent="commitAmount(pair)"
                     />
                     <button
                       class="flex items-center justify-center w-8 h-8 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded active:scale-95 transition-all"
-                      :class="voucherForm.entries.length <= 2 ? 'opacity-30 cursor-not-allowed' : ''"
-                      :disabled="voucherForm.entries.length <= 2"
+                      :class="voucherForm.pairs.length <= 1 ? 'opacity-30 cursor-not-allowed' : ''"
+                      :disabled="voucherForm.pairs.length <= 1"
                       @click="removeVoucherEntry(index)"
                     >
                       <i class="fa-solid fa-trash text-xs"></i>
