@@ -20,6 +20,7 @@ export interface JournalVoucher {
   voucher_number: string
   description: string
   is_system_generated: boolean
+  is_posted: boolean
   entries: JournalVoucherEntry[]
 }
 
@@ -49,4 +50,8 @@ export function createJournalVoucher(data: Partial<JournalVoucher>): Promise<Axi
 
 export function deleteJournalVoucher(id: number): Promise<AxiosResponse> {
   return apiClient.delete(`journal-vouchers/${id}/`)
+}
+
+export function updateJournalVoucher(id: number, data: Record<string, unknown>): Promise<AxiosResponse> {
+  return apiClient.put(`journal-vouchers/${id}/`, data)
 }

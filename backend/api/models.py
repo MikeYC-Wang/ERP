@@ -33,6 +33,7 @@ class JournalVoucher(models.Model):
     date = models.DateField('日期')
     description = models.TextField('摘要', blank=True, default='')
     is_system_generated = models.BooleanField('系統自動產生', default=False)
+    is_posted = models.BooleanField('已入帳', default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

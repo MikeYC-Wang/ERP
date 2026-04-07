@@ -252,6 +252,7 @@ class DashboardMonthlyTrendView(APIView):
 
         base_qs = JournalVoucherItem.objects.filter(
             voucher__date__gte=twelve_months_ago,
+            voucher__is_posted=True,
         )
 
         # Revenue: 科目類別 REVENUE 的貸方金額
@@ -301,7 +302,10 @@ class DashboardExpenseBreakdownView(APIView):
     def get(self, request):
         qs = (
             JournalVoucherItem.objects
-            .filter(account_subject__category=AccountSubject.Category.EXPENSE)
+            .filter(
+                account_subject__category=AccountSubject.Category.EXPENSE,
+                voucher__is_posted=True,
+            )
             .values(name=F('account_subject__name'))
             .annotate(total=Coalesce(Sum('debit_amount'), Value(Decimal('0'))))
             .order_by('-total')
@@ -384,6 +388,7 @@ class DashboardSummaryView(APIView):
                     account_subject__category=AccountSubject.Category.REVENUE,
                     voucher__date__gte=start,
                     voucher__date__lt=end,
+                    voucher__is_posted=True,
                 )
                 .aggregate(total=Coalesce(Sum('credit_amount'), Value(Decimal('0'))))
             )
@@ -396,6 +401,7 @@ class DashboardSummaryView(APIView):
                     account_subject__category=AccountSubject.Category.EXPENSE,
                     voucher__date__gte=start,
                     voucher__date__lt=end,
+                    voucher__is_posted=True,
                 )
                 .aggregate(total=Coalesce(Sum('debit_amount'), Value(Decimal('0'))))
             )

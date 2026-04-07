@@ -10,6 +10,7 @@ import {
   deleteAccountSubject as apiDeleteSubject,
   getJournalVouchers,
   createJournalVoucher,
+  updateJournalVoucher,
   deleteJournalVoucher,
 } from '@/api/accounting'
 
@@ -102,6 +103,7 @@ interface JournalVoucher {
   voucherNumber: string
   description: string
   isSystemGenerated: boolean
+  isPosted: boolean
   entries: VoucherEntry[]
 }
 
@@ -193,14 +195,61 @@ function makeEmptyPair(): VoucherPair {
 const voucherForm = ref({
   date: '',
   description: '',
+  isPosted: false,
   pairs: [makeEmptyPair()] as VoucherPair[],
 })
 
+const editingVoucherId = ref<number | null>(null)
+
+function findSubjectIdByName(name: string): string {
+  const s = subjects.value.find((x) => x.name === name)
+  return s ? String(s.id) : ''
+}
+
 function openAddVoucher() {
+  editingVoucherId.value = null
+  const pair1: VoucherPair = {
+    debitSubject: findSubjectIdByName('銀行存款'),
+    creditSubject: findSubjectIdByName('商品銷售收入'),
+    amount: 0,
+    amountInput: '',
+  }
+  const pair2: VoucherPair = {
+    debitSubject: findSubjectIdByName('商品成本'),
+    creditSubject: findSubjectIdByName('商品存貨'),
+    amount: 0,
+    amountInput: '',
+  }
   voucherForm.value = {
     date: '',
     description: '',
-    pairs: [makeEmptyPair()],
+    isPosted: true,
+    pairs: [pair1, pair2],
+  }
+  showVoucherModal.value = true
+}
+
+function openEditVoucher(voucher: JournalVoucher) {
+  editingVoucherId.value = voucher.id
+  // Reconstruct pairs from flat entries: pair up [debit, credit] in order
+  const pairs: VoucherPair[] = []
+  for (let i = 0; i < voucher.entries.length; i += 2) {
+    const d = voucher.entries[i]
+    const c = voucher.entries[i + 1]
+    const amt = Number(d?.debitAmount || c?.creditAmount || 0)
+    pairs.push({
+      debitSubject: d ? String(d.accountSubject) : '',
+      creditSubject: c ? String(c.accountSubject) : '',
+      amount: amt,
+      amountInput: String(amt),
+    })
+  }
+  if (pairs.length === 0) pairs.push(makeEmptyPair())
+  voucherForm.value = {
+    date: voucher.date,
+    description: voucher.description,
+    isPosted: voucher.isPosted,
+    pairs,
   }
   showVoucherModal.value = true
 }
@@ -267,47 +316,77 @@ const isBalanced = computed(() =>
   ),
 )
 
+function mapApiVoucher(v: Record<string, unknown>): JournalVoucher {
+  return {
+    id: v.id as number,
+    date: v.date as string,
+    voucherNumber: v.voucher_number as string,
+    description: v.description as string,
+    isSystemGenerated: v.is_system_generated as boolean,
+    isPosted: v.is_posted as boolean,
+    entries: (v.items as Array<Record<string, unknown>>)?.map((e) => ({
+      accountSubject: String(e.account_subject),
+      debitAmount: Number(e.debit_amount),
+      creditAmount: Number(e.credit_amount),
+    })) || [],
+  }
+}
+
 async function saveVoucher() {
   if (!isBalanced.value) return
-  try {
-    const items: Array<{ account_subject: number; debit_amount: number; credit_amount: number }> = []
-    voucherForm.value.pairs.forEach((p) => {
-      items.push({ account_subject: Number(p.debitSubject), debit_amount: Number(p.amount), credit_amount: 0 })
-      items.push({ account_subject: Number(p.creditSubject), debit_amount: 0, credit_amount: Number(p.amount) })
-    })
-    const payload = {
-      date: voucherForm.value.date,
-      description: voucherForm.value.description,
-      items,
+  const items: Array<{ account_subject: number; debit_amount: number; credit_amount: number }> = []
+  voucherForm.value.pairs.forEach((p) => {
+    items.push({ account_subject: Number(p.debitSubject), debit_amount: Number(p.amount), credit_amount: 0 })
+    items.push({ account_subject: Number(p.creditSubject), debit_amount: 0, credit_amount: Number(p.amount) })
+  })
+  const payload = {
+    date: voucherForm.value.date,
+    description: voucherForm.value.description,
+    is_posted: voucherForm.value.isPosted,
+    items,
+  }
+  if (editingVoucherId.value != null) {
+    try {
+      const res = await updateJournalVoucher(editingVoucherId.value, payload)
+      const updated = mapApiVoucher(res.data as Record<string, unknown>)
+      const idx = vouchers.value.findIndex((v) => v.id === editingVoucherId.value)
+      if (idx !== -1) vouchers.value[idx] = updated
+    } catch (e) {
+      console.warn('Failed to update voucher via API, applying locally', e)
+      const idx = vouchers.value.findIndex((v) => v.id === editingVoucherId.value)
+      if (idx !== -1) {
+        vouchers.value[idx] = {
+          ...vouchers.value[idx],
+          date: voucherForm.value.date,
+          description: voucherForm.value.description,
+          isPosted: voucherForm.value.isPosted,
+          entries: voucherForm.value.pairs.flatMap((p) => [
+            { accountSubject: p.debitSubject, debitAmount: Number(p.amount), creditAmount: 0 },
+            { accountSubject: p.creditSubject, debitAmount: 0, creditAmount: Number(p.amount) },
+          ]),
+        }
+      }
     }
-    const res = await createJournalVoucher(payload)
-    const v = res.data as Record<string, unknown>
-    vouchers.value.push({
-      id: v.id as number,
-      date: v.date as string,
-      voucherNumber: v.voucher_number as string,
-      description: v.description as string,
-      isSystemGenerated: v.is_system_generated as boolean,
-      entries: (v.items as Array<Record<string, unknown>>)?.map((e) => ({
-        accountSubject: String(e.account_subject),
-        debitAmount: Number(e.debit_amount),
-        creditAmount: Number(e.credit_amount),
-      })) || [],
-    })
-  } catch (e) {
-    console.warn('Failed to create voucher via API, applying locally', e)
-    const newId = Math.max(...vouchers.value.map((v) => v.id), 0) + 1
-    vouchers.value.push({
-      id: newId,
-      date: voucherForm.value.date,
-      voucherNumber: `JV-${voucherForm.value.date.substring(0, 4)}-${String(newId).padStart(3, '0')}`,
-      description: voucherForm.value.description,
-      isSystemGenerated: false,
-      entries: voucherForm.value.pairs.flatMap((p) => [
-        { accountSubject: p.debitSubject, debitAmount: Number(p.amount), creditAmount: 0 },
-        { accountSubject: p.creditSubject, debitAmount: 0, creditAmount: Number(p.amount) },
-      ]),
-    })
+  } else {
+    try {
+      const res = await createJournalVoucher(payload)
+      vouchers.value.push(mapApiVoucher(res.data as Record<string, unknown>))
+    } catch (e) {
+      console.warn('Failed to create voucher via API, applying locally', e)
+      const newId = Math.max(...vouchers.value.map((v) => v.id), 0) + 1
+      vouchers.value.push({
+        id: newId,
+        date: voucherForm.value.date,
+        voucherNumber: `JV-${voucherForm.value.date.substring(0, 4)}-${String(newId).padStart(3, '0')}`,
+        description: voucherForm.value.description,
+        isSystemGenerated: false,
+        isPosted: voucherForm.value.isPosted,
+        entries: voucherForm.value.pairs.flatMap((p) => [
+          { accountSubject: p.debitSubject, debitAmount: Number(p.amount), creditAmount: 0 },
+          { accountSubject: p.creditSubject, debitAmount: 0, creditAmount: Number(p.amount) },
+        ]),
+      })
+    }
   }
   showVoucherModal.value = false
 }
@@ -321,6 +400,7 @@ const selectedReportMonth = ref(0)
 // reportVouchers：損益表/資產負債表用 → 單期（只看選定月份）
 const reportVouchers = computed(() =>
   vouchers.value.filter((v) => {
+    if (!v.isPosted) return false
     if (!v.date.startsWith(String(selectedReportYear.value))) return false
     if (selectedReportMonth.value === 0) return true
     const mm = String(selectedReportMonth.value).padStart(2, '0')
@@ -346,6 +426,7 @@ const trialVouchers = computed(() => {
   if (selectedReportMonth.value === 0) return reportVouchers.value
   const mm = String(selectedReportMonth.value).padStart(2, '0')
   return vouchers.value.filter((v) => {
+    if (!v.isPosted) return false
     if (!v.date.startsWith(String(selectedReportYear.value))) return false
     return v.date.substring(5, 7) <= mm
   })
@@ -544,6 +625,7 @@ onMounted(async () => {
         voucherNumber: v.voucher_number as string,
         description: v.description as string,
         isSystemGenerated: v.is_system_generated as boolean,
+        isPosted: v.is_posted as boolean,
         entries: (v.items as Array<Record<string, unknown>>)?.map((e) => ({
           accountSubject: String(e.account_subject),
           debitAmount: Number(e.debit_amount),
@@ -722,6 +804,7 @@ onMounted(async () => {
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">傳票編號</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">摘要</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">類型</th>
+                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">狀態</th>
                     <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">操作</th>
                   </tr>
                 </thead>
@@ -749,9 +832,30 @@ onMounted(async () => {
                         <i class="fa-solid fa-user mr-1 text-[10px]"></i> 手動
                       </span>
                     </td>
+                    <td class="px-5 py-3">
+                      <span
+                        v-if="voucher.isPosted"
+                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                      >
+                        <i class="fa-solid fa-circle-check mr-1 text-[10px]"></i> 已入帳
+                      </span>
+                      <span
+                        v-else
+                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-100 dark:bg-stone-700/50 text-stone-600 dark:text-stone-300"
+                      >
+                        <i class="fa-regular fa-circle mr-1 text-[10px]"></i> 未入帳
+                      </span>
+                    </td>
                     <td class="px-5 py-3 text-right">
                       <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all mr-1" @click="openViewVoucher(voucher)">
                         <i class="fa-solid fa-eye"></i> 檢視
+                      </button>
+                      <button
+                        v-if="!voucher.isSystemGenerated"
+                        class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all mr-1"
+                        @click="openEditVoucher(voucher)"
+                      >
+                        <i class="fa-solid fa-pen-to-square"></i> 編輯
                       </button>
                       <button
                         v-if="!voucher.isSystemGenerated"
@@ -763,7 +867,7 @@ onMounted(async () => {
                     </td>
                   </tr>
                   <tr v-if="pagedVouchers.length === 0">
-                    <td colspan="5" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
+                    <td colspan="6" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
                       {{ selectedJournalYear }} 年度無傳票資料。
                     </td>
                   </tr>
@@ -1095,7 +1199,7 @@ onMounted(async () => {
           <div class="absolute inset-0 bg-black/40"></div>
           <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto modal-enter-active">
             <div class="flex items-center justify-between mb-5">
-              <h3 class="text-lg font-semibold text-slate-900 dark:text-stone-50">新增傳票</h3>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-stone-50">{{ editingVoucherId != null ? '編輯傳票' : '新增傳票' }}</h3>
               <button class="text-slate-400 hover:text-slate-600 dark:hover:text-stone-200" @click="showVoucherModal = false">
                 <i class="fa-solid fa-xmark"></i>
               </button>
@@ -1146,7 +1250,7 @@ onMounted(async () => {
                       class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
                       <option value="" disabled>借方科目</option>
-                      <option v-for="subject in subjects" :key="subject.id" :value="subject.code">
+                      <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
                         {{ subject.code }} - {{ subject.name }}
                       </option>
                     </select>
@@ -1155,7 +1259,7 @@ onMounted(async () => {
                       class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
                       <option value="" disabled>貸方科目</option>
-                      <option v-for="subject in subjects" :key="subject.id" :value="subject.code">
+                      <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
                         {{ subject.code }} - {{ subject.name }}
                       </option>
                     </select>
@@ -1199,6 +1303,16 @@ onMounted(async () => {
                   已平衡
                 </div>
               </div>
+              <!-- Posted Flag -->
+              <label class="flex items-center gap-2 px-1 cursor-pointer select-none">
+                <input
+                  v-model="voucherForm.isPosted"
+                  type="checkbox"
+                  class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-500 focus:ring-amber-500"
+                />
+                <span class="text-sm font-medium text-slate-700 dark:text-stone-200">已入帳</span>
+                <span class="text-xs text-slate-500 dark:text-slate-400">（勾選後才會納入報表與儀表板統計）</span>
+              </label>
             </div>
             <div class="flex justify-end gap-3 mt-6">
               <button class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg active:scale-95 transition-all" @click="showVoucherModal = false">

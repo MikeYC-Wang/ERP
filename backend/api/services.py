@@ -90,6 +90,7 @@ def create_inventory_from_purchase(purchase_order):
             date=today,
             description=f'採購單 {purchase_order.order_number} 收貨入庫',
             is_system_generated=True,
+            is_posted=True,
         )
         JournalVoucherItem.objects.create(
             voucher=voucher,
@@ -160,6 +161,7 @@ def complete_order(order):
         date=today,
         description=f'訂單 {order.order_number} 銷貨成本結轉',
         is_system_generated=True,
+        is_posted=True,
     )
     JournalVoucherItem.objects.create(
         voucher=voucher1,
@@ -180,6 +182,7 @@ def complete_order(order):
         date=today,
         description=f'訂單 {order.order_number} 銷售收入',
         is_system_generated=True,
+        is_posted=True,
     )
     JournalVoucherItem.objects.create(
         voucher=voucher2,
