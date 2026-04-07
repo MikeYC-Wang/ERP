@@ -368,6 +368,79 @@ body {
 .dark .text-orange-500 { color: #FFB347 !important; }
 .dark .text-amber-400  { color: #FFD480 !important; }
 
+/* ─── Mobile responsive layer (≤767px) ─── */
+@media (max-width: 767px) {
+  /* Prevent iOS zoom: inputs/selects/textareas at ≥16px */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Tables: keep nowrap so horizontal scroll inside the existing
+     `overflow-x-auto` wrappers works smoothly without text wrapping. */
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+  .overflow-x-auto > table { white-space: nowrap; }
+
+  /* Modal containers using `fixed inset-0 z-50 flex items-center justify-center`
+     should allow vertical scrolling and pad nicely on small screens. */
+  .fixed.inset-0.z-50 {
+    padding: 0.75rem !important;
+    overflow-y: auto !important;
+    align-items: flex-start !important;
+  }
+  .fixed.inset-0.z-50 > .relative {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: calc(100vh - 1.5rem) !important;
+    margin: 0.5rem !important;
+    overflow-y: auto;
+  }
+
+
+  /* Filter bars and toolbars using `flex` with horizontal items: stack them. */
+  .filters-row, .toolbar-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .filters-row > *, .toolbar-row > * {
+    width: 100% !important;
+  }
+
+  /* Make sidebar drawer take most of the screen for nicer touch */
+  aside.w-64 { width: 17rem !important; }
+
+  /* Touch-target minimums for icon buttons */
+  button.w-8.h-8 { min-width: 40px; min-height: 40px; }
+
+  /* Reduce heavy padding on cards/sections */
+  main > * { min-width: 0; }
+
+  /* Tab navs (`<nav class="flex gap-2">`) should scroll horizontally
+     instead of overflowing the viewport. */
+  nav.flex {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  nav.flex::-webkit-scrollbar { display: none; }
+  nav.flex > * { flex-shrink: 0; }
+
+  /* Reduce default page padding for more content room */
+  main { padding: 0.75rem !important; }
+}
+
+/* Extra-small screens: collapse fixed grid-cols-N to one column.
+   Confined to <640px so Tailwind's `sm:` prefix above that still works. */
+@media (max-width: 639px) {
+  .grid.grid-cols-2:not(.mobile-keep-cols),
+  .grid.grid-cols-3:not(.mobile-keep-cols),
+  .grid.grid-cols-4:not(.mobile-keep-cols),
+  .grid.grid-cols-5:not(.mobile-keep-cols),
+  .grid.grid-cols-6:not(.mobile-keep-cols) {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* ─── Dark mode particles (milk tea warm tones) ─── */
 .dark .particles {
   box-shadow:
