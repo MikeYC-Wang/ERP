@@ -476,6 +476,9 @@ interface StockSummaryRow {
 const stockSummary = ref<StockSummaryRow[]>([])
 // Draft actual-count input: productId -> number (persisted to backend via autosave)
 const actualCounts = ref<Record<number, number | null>>({})
+// Tracks which products have a user-entered / backend-loaded value.
+// Rows not in this set display 0 by default but are NOT saved to backend.
+const touchedCounts = ref<Record<number, boolean>>({})
 // "只顯示實盤 > 0" toggle
 const showOnlyCounted = ref(false)
 // Per-row debounce timers for autosave
@@ -501,6 +504,7 @@ function showSaveToast(text: string, kind: 'success' | 'error' = 'success') {
 }
 
 function onStocktakeInput(productId: number) {
+  touchedCounts.value[productId] = true
   if (stocktakeSaveTimers[productId]) {
     clearTimeout(stocktakeSaveTimers[productId])
   }
@@ -533,10 +537,14 @@ async function loadStocktakeCounts() {
     const res = await getStocktakeCounts()
     const data: Record<string, unknown>[] = Array.isArray(res.data) ? res.data : res.data?.results ?? []
     const map: Record<number, number | null> = {}
+    const touched: Record<number, boolean> = {}
     for (const row of data) {
-      map[row.product as number] = Number(row.count ?? 0)
+      const pid = row.product as number
+      map[pid] = Number(row.count ?? 0)
+      touched[pid] = true
     }
     actualCounts.value = map
+    touchedCounts.value = touched
   } catch (e) {
     console.warn('Failed to load stocktake counts', e)
   }
@@ -549,6 +557,7 @@ async function clearStocktakeAll() {
     console.warn('Failed to clear stocktake counts', e)
   }
   actualCounts.value = {}
+  touchedCounts.value = {}
 }
 
 const countRows = computed(() =>
@@ -556,12 +565,14 @@ const countRows = computed(() =>
     .filter((row) => productMatchesFilters(products.value.find(p => p.id === row.id)))
     .filter((row) => {
       if (!showOnlyCounted.value) return true
+      if (!touchedCounts.value[row.id]) return false
       const v = actualCounts.value[row.id]
       return typeof v === 'number' && !Number.isNaN(v) && v > 0
     })
     .map((row) => {
-      const actual = actualCounts.value[row.id] ?? null
-      const variance = actual !== null ? actual - row.totalRemaining : null
+      const raw = actualCounts.value[row.id]
+      const actual = typeof raw === 'number' && !Number.isNaN(raw) ? raw : 0
+      const variance = actual - row.totalRemaining
       return { ...row, actual, variance }
     })
 )
@@ -1371,12 +1382,11 @@ onMounted(async () => {
                     <td class="px-5 py-3 text-right">
                       <div class="inline-flex items-center gap-1.5 justify-end">
                         <input
-                          v-model.number="actualCounts[row.id]"
-                          @input="onStocktakeInput(row.id)"
+                          :value="actualCounts[row.id] ?? 0"
+                          @input="(e) => { const v = (e.target as HTMLInputElement).value; actualCounts[row.id] = v === '' ? 0 : Number(v); onStocktakeInput(row.id) }"
                           type="number"
                           min="0"
                           class="w-20 text-right rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          placeholder="—"
                         />
                         <Transition name="fade">
                           <span
@@ -1389,10 +1399,9 @@ onMounted(async () => {
                       </div>
                     </td>
                     <td class="px-5 py-3 text-right font-mono font-semibold">
-                      <span v-if="row.variance !== null" :class="row.variance === 0 ? 'text-emerald-600 dark:text-emerald-400' : row.variance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'">
+                      <span :class="row.variance === 0 ? 'text-emerald-600 dark:text-emerald-400' : row.variance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'">
                         {{ row.variance > 0 ? '+' : '' }}{{ row.variance }}
                       </span>
-                      <span v-else class="text-slate-300 dark:text-slate-600">—</span>
                     </td>
                     <td class="px-5 py-3">
                       <span v-if="row.isLow" class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/40 rounded-full">
