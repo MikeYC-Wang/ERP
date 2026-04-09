@@ -16,8 +16,16 @@ from .models import (
     ProductPackaging,
     PurchaseApplyItem,
     PurchaseOrder,
+    StocktakeCount,
     Supplier,
 )
+
+
+class StocktakeCountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StocktakeCount
+        fields = ['id', 'product', 'count', 'updated_at']
+        read_only_fields = ['updated_at']
 
 
 class UserRegisterSerializer(serializers.ModelSerializer):

@@ -22,6 +22,7 @@ from .views import (
     PurchaseApplyItemViewSet,
     PurchaseOrderViewSet,
     RegisterView,
+    StocktakeCountViewSet,
     SupplierViewSet,
 )
 
@@ -38,6 +39,7 @@ router.register(r'orders', OrderViewSet)
 router.register(r'order-items', OrderItemViewSet)
 router.register(r'suppliers', SupplierViewSet)
 router.register(r'customers', CustomerViewSet)
+router.register(r'stocktake-counts', StocktakeCountViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

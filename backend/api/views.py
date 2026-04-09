@@ -24,6 +24,7 @@ from .models import (
     Product,
     PurchaseApplyItem,
     PurchaseOrder,
+    StocktakeCount,
     Supplier,
 )
 from .serializers import (
@@ -38,6 +39,7 @@ from .serializers import (
     ProductSerializer,
     PurchaseApplyItemSerializer,
     PurchaseOrderSerializer,
+    StocktakeCountSerializer,
     SupplierSerializer,
     UserRegisterSerializer,
 )
@@ -365,6 +367,41 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if q:
             qs = qs.filter(name__icontains=q)
         return qs
+
+
+# ---------------------------------------------------------------------------
+# Stocktake Counts (draft)
+# ---------------------------------------------------------------------------
+
+class StocktakeCountViewSet(viewsets.ModelViewSet):
+    """庫存盤點草稿 — 使用者輸入的實盤數量，逐筆 autosave。"""
+
+    queryset = StocktakeCount.objects.all()
+    serializer_class = StocktakeCountSerializer
+
+    @action(detail=False, methods=['post'], url_path='upsert')
+    def upsert(self, request):
+        product_id = request.data.get('product')
+        count = request.data.get('count')
+        if product_id is None:
+            return Response({'error': 'product is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            count_int = int(count)
+            if count_int < 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({'error': 'count must be a non-negative integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj, _ = StocktakeCount.objects.update_or_create(
+            product_id=product_id,
+            defaults={'count': count_int},
+        )
+        return Response(StocktakeCountSerializer(obj).data)
+
+    @action(detail=False, methods=['delete'], url_path='clear')
+    def clear(self, request):
+        StocktakeCount.objects.all().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------

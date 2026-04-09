@@ -19,6 +19,9 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  getStocktakeCounts,
+  upsertStocktakeCount,
+  clearStocktakeCounts,
 } from '@/api/inventory'
 import { getSuppliers } from '@/api/suppliers'
 
@@ -471,12 +474,72 @@ interface StockSummaryRow {
 }
 
 const stockSummary = ref<StockSummaryRow[]>([])
-// Local actual count input: productId -> number
+// Draft actual-count input: productId -> number (persisted to backend via autosave)
 const actualCounts = ref<Record<number, number | null>>({})
+// "只顯示實盤 > 0" toggle
+const showOnlyCounted = ref(false)
+// Per-row debounce timers for autosave
+const stocktakeSaveTimers: Record<number, ReturnType<typeof setTimeout>> = {}
+// Per-row "已儲存" indicator timers + flags
+const stocktakeSavedFlags = ref<Record<number, boolean>>({})
+const stocktakeSavedHideTimers: Record<number, ReturnType<typeof setTimeout>> = {}
+
+function onStocktakeInput(productId: number) {
+  if (stocktakeSaveTimers[productId]) {
+    clearTimeout(stocktakeSaveTimers[productId])
+  }
+  stocktakeSaveTimers[productId] = setTimeout(async () => {
+    const raw = actualCounts.value[productId]
+    // Don't save empty / null / NaN — treat as "not yet entered"
+    if (raw === null || raw === undefined || Number.isNaN(raw as number)) {
+      return
+    }
+    const count = Number(raw)
+    if (!Number.isFinite(count) || count < 0) return
+    try {
+      await upsertStocktakeCount(productId, count)
+      stocktakeSavedFlags.value[productId] = true
+      if (stocktakeSavedHideTimers[productId]) clearTimeout(stocktakeSavedHideTimers[productId])
+      stocktakeSavedHideTimers[productId] = setTimeout(() => {
+        stocktakeSavedFlags.value[productId] = false
+      }, 1500)
+    } catch (e) {
+      console.warn('Failed to autosave stocktake count', e)
+    }
+  }, 600)
+}
+
+async function loadStocktakeCounts() {
+  try {
+    const res = await getStocktakeCounts()
+    const data: Record<string, unknown>[] = Array.isArray(res.data) ? res.data : res.data?.results ?? []
+    const map: Record<number, number | null> = {}
+    for (const row of data) {
+      map[row.product as number] = Number(row.count ?? 0)
+    }
+    actualCounts.value = map
+  } catch (e) {
+    console.warn('Failed to load stocktake counts', e)
+  }
+}
+
+async function clearStocktakeAll() {
+  try {
+    await clearStocktakeCounts()
+  } catch (e) {
+    console.warn('Failed to clear stocktake counts', e)
+  }
+  actualCounts.value = {}
+}
 
 const countRows = computed(() =>
   stockSummary.value
     .filter((row) => productMatchesFilters(products.value.find(p => p.id === row.id)))
+    .filter((row) => {
+      if (!showOnlyCounted.value) return true
+      const v = actualCounts.value[row.id]
+      return typeof v === 'number' && !Number.isNaN(v) && v > 0
+    })
     .map((row) => {
       const actual = actualCounts.value[row.id] ?? null
       const variance = actual !== null ? actual - row.totalRemaining : null
@@ -946,6 +1009,7 @@ onMounted(async () => {
     }
     await loadStockSummary()
     await loadCategories()
+    await loadStocktakeCounts()
   } catch (e) {
     console.warn('Inventory API unavailable, using fallback data', e)
   } finally {
@@ -1216,12 +1280,22 @@ onMounted(async () => {
               <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">庫存盤點</h2>
               <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">輸入實盤數量，系統自動計算差異。橘色高亮表示低於安全庫存。</p>
             </div>
-            <button
-              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all"
-              @click="actualCounts = {}"
-            >
-              <i class="fa-solid fa-rotate-left"></i> 清除實盤
-            </button>
+            <div class="flex items-center gap-2">
+              <label class="inline-flex items-center gap-2 px-3 min-h-[40px] text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer select-none">
+                <input
+                  v-model="showOnlyCounted"
+                  type="checkbox"
+                  class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
+                />
+                只顯示實盤 &gt; 0
+              </label>
+              <button
+                class="inline-flex items-center gap-1.5 px-3 min-h-[40px] text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-all"
+                @click="clearStocktakeAll"
+              >
+                <i class="fa-solid fa-rotate-left"></i> 清除實盤
+              </button>
+            </div>
           </div>
           <div class="flex flex-col md:flex-row md:items-center gap-2 mb-3">
             <select v-model.number="filterTopCategory" @change="onFilterTopChange"
@@ -1276,13 +1350,24 @@ onMounted(async () => {
                       <i v-if="row.isLow" class="fa-solid fa-triangle-exclamation text-red-500 ml-1 text-xs animate-pulse"></i>
                     </td>
                     <td class="px-5 py-3 text-right">
-                      <input
-                        v-model.number="actualCounts[row.id]"
-                        type="number"
-                        min="0"
-                        class="w-20 text-right rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        placeholder="—"
-                      />
+                      <div class="inline-flex items-center gap-1.5 justify-end">
+                        <input
+                          v-model.number="actualCounts[row.id]"
+                          @input="onStocktakeInput(row.id)"
+                          type="number"
+                          min="0"
+                          class="w-20 text-right rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          placeholder="—"
+                        />
+                        <Transition name="fade">
+                          <span
+                            v-if="stocktakeSavedFlags[row.id]"
+                            class="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+                          >
+                            <i class="fa-solid fa-check"></i> 已儲存
+                          </span>
+                        </Transition>
+                      </div>
                     </td>
                     <td class="px-5 py-3 text-right font-mono font-semibold">
                       <span v-if="row.variance !== null" :class="row.variance === 0 ? 'text-emerald-600 dark:text-emerald-400' : row.variance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400'">

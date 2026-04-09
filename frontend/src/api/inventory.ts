@@ -133,6 +133,26 @@ export function getStockSummary(): Promise<AxiosResponse> {
   return apiClient.get('inventory/stock-summary/')
 }
 
+// ─── Stocktake draft counts ───
+export interface StocktakeCountRow {
+  id: number
+  product: number
+  count: number
+  updated_at: string
+}
+
+export function getStocktakeCounts(): Promise<AxiosResponse> {
+  return apiClient.get('stocktake-counts/')
+}
+
+export function upsertStocktakeCount(productId: number, count: number): Promise<AxiosResponse> {
+  return apiClient.post('stocktake-counts/upsert/', { product: productId, count })
+}
+
+export function clearStocktakeCounts(): Promise<AxiosResponse> {
+  return apiClient.delete('stocktake-counts/clear/')
+}
+
 export interface BulkImportRow {
   sku: string
   name: string

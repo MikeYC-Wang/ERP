@@ -384,3 +384,24 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f'{self.order.order_number} - {self.product.name}'
+
+
+class StocktakeCount(models.Model):
+    """庫存盤點草稿 — 使用者輸入的實盤數量 (每個商品一筆)"""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='stocktake_counts',
+        verbose_name='商品',
+    )
+    count = models.PositiveIntegerField('實盤數量', default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '盤點草稿'
+        verbose_name_plural = '盤點草稿'
+        unique_together = [('product',)]
+
+    def __str__(self):
+        return f'{self.product.sku} = {self.count}'
