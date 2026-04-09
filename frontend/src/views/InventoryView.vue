@@ -434,16 +434,29 @@ interface StockBatch {
 }
 
 const stockBatches = ref<StockBatch[]>([])
-const stockFilter = ref('all')
 
-const uniqueProductNames = computed(() => {
-  const names = new Set(stockBatches.value.map((b) => b.productName))
-  return Array.from(names).sort()
-})
+function productMatchesFilters(p: Product | undefined): boolean {
+  if (!p) return false
+  if (filterSubCategory.value !== null) {
+    if (p.category !== filterSubCategory.value) return false
+  } else if (filterTopCategory.value !== null) {
+    if (p.category === null) return false
+    if (p.category !== filterTopCategory.value) {
+      const cat = categories.value.find(c => c.id === p.category)
+      if (!cat || cat.parent !== filterTopCategory.value) return false
+    }
+  }
+  if (filterSupplier.value !== null && p.supplier !== filterSupplier.value) return false
+  const q = filterSearch.value.trim().toLowerCase()
+  if (q && !p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false
+  return true
+}
 
 const filteredStock = computed(() => {
-  if (stockFilter.value === 'all') return stockBatches.value
-  return stockBatches.value.filter((b) => b.productName === stockFilter.value)
+  return stockBatches.value.filter((b) => {
+    const p = products.value.find(pp => pp.sku === b.sku)
+    return productMatchesFilters(p)
+  })
 })
 
 // ─── Tab 3: Inventory Count (盤點) ───
@@ -462,11 +475,13 @@ const stockSummary = ref<StockSummaryRow[]>([])
 const actualCounts = ref<Record<number, number | null>>({})
 
 const countRows = computed(() =>
-  stockSummary.value.map((row) => {
-    const actual = actualCounts.value[row.id] ?? null
-    const variance = actual !== null ? actual - row.totalRemaining : null
-    return { ...row, actual, variance }
-  })
+  stockSummary.value
+    .filter((row) => productMatchesFilters(products.value.find(p => p.id === row.id)))
+    .map((row) => {
+      const actual = actualCounts.value[row.id] ?? null
+      const variance = actual !== null ? actual - row.totalRemaining : null
+      return { ...row, actual, variance }
+    })
 )
 
 const lowStockItems = computed(() =>
@@ -821,7 +836,7 @@ async function confirmBulkImport() {
     return
   }
   if (bulkInvalidCount.value > 0) {
-    if (!confirm(`有 ${bulkInvalidCount.value} 筆不合法資料會被跳過，繼續？`)) return
+    if (!confirm(`有 ${bulkInvalidCount.value} 筆不符合資料會被跳過，繼續？`)) return
   }
   const payload = {
     supplier: bulkSupplier.value,
@@ -1129,15 +1144,25 @@ onMounted(async () => {
       <!-- Tab 2: Stock Levels -->
       <Transition name="fade" mode="out-in">
         <div v-if="activeTab === 'stock'" key="stock">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">庫存水位</h2>
-            <select
-              v-model="stockFilter"
-              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5"
-            >
-              <option value="all">全部商品</option>
-              <option v-for="name in uniqueProductNames" :key="name" :value="name">{{ name }}</option>
+          <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200 mb-3">庫存水位</h2>
+          <div class="flex flex-col md:flex-row md:items-center gap-2 mb-3">
+            <select v-model.number="filterTopCategory" @change="onFilterTopChange"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44">
+              <option :value="null">全部大類</option>
+              <option v-for="c in topCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
+            <select v-model.number="filterSubCategory" :disabled="filterTopCategory === null"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44 disabled:opacity-50">
+              <option :value="null">全部子類</option>
+              <option v-for="c in childCategoriesOf(filterTopCategory)" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select v-model.number="filterSupplier"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44">
+              <option :value="null">全部廠商</option>
+              <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+            <input v-model="filterSearch" type="text" placeholder="搜尋商品名稱 / SKU"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:flex-1" />
           </div>
 
           <div class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-teal-400">
@@ -1186,7 +1211,7 @@ onMounted(async () => {
       <!-- Tab 3: Inventory Count (盤點) -->
       <Transition name="fade" mode="out-in">
         <div v-if="activeTab === 'count'" key="count">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center justify-between mb-3">
             <div>
               <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">庫存盤點</h2>
               <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">輸入實盤數量，系統自動計算差異。橘色高亮表示低於安全庫存。</p>
@@ -1197,6 +1222,25 @@ onMounted(async () => {
             >
               <i class="fa-solid fa-rotate-left"></i> 清除實盤
             </button>
+          </div>
+          <div class="flex flex-col md:flex-row md:items-center gap-2 mb-3">
+            <select v-model.number="filterTopCategory" @change="onFilterTopChange"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44">
+              <option :value="null">全部大類</option>
+              <option v-for="c in topCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select v-model.number="filterSubCategory" :disabled="filterTopCategory === null"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44 disabled:opacity-50">
+              <option :value="null">全部子類</option>
+              <option v-for="c in childCategoriesOf(filterTopCategory)" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select v-model.number="filterSupplier"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44">
+              <option :value="null">全部廠商</option>
+              <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+            <input v-model="filterSearch" type="text" placeholder="搜尋商品名稱 / SKU"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:flex-1" />
           </div>
 
           <div class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-purple-400">
@@ -1708,7 +1752,7 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2 justify-between">
                 <div class="text-sm text-slate-600 dark:text-slate-300">
                   共 <strong>{{ bulkRows.length }}</strong> 筆
-                  <span v-if="bulkInvalidCount > 0" class="text-red-500 ml-2">{{ bulkInvalidCount }} 筆不合法</span>
+                  <span v-if="bulkInvalidCount > 0" class="text-red-500 ml-2">{{ bulkInvalidCount }} 筆不符合</span>
                 </div>
                 <div class="flex gap-2">
                   <button class="px-3 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 active:scale-95 transition-all" @click="addBulkRow">
