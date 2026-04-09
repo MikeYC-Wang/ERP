@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import jsPDF from 'jspdf'
 import {
   getProducts,
@@ -128,6 +128,15 @@ const filteredProducts = computed(() => {
 function onFilterTopChange() {
   filterSubCategory.value = null
 }
+
+const productPage = ref(1)
+const productPageSize = 15
+const productTotalPages = computed(() => Math.max(1, Math.ceil(filteredProducts.value.length / productPageSize)))
+const pagedProducts = computed(() => {
+  const start = (productPage.value - 1) * productPageSize
+  return filteredProducts.value.slice(start, start + productPageSize)
+})
+watch([filterTopCategory, filterSubCategory, filterSupplier, filterSearch], () => { productPage.value = 1 })
 
 // Product modal cascading category
 const formTopCategory = ref<number | null>(null)
@@ -1052,7 +1061,7 @@ onMounted(async () => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(product, index) in filteredProducts"
+                    v-for="(product, index) in pagedProducts"
                     :key="product.id"
                     class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-amber-50 dark:hover:bg-gray-700/50 hover:translate-x-1 transition-all"
                     :class="index % 2 === 1 ? 'bg-orange-50/30 dark:bg-gray-800/50' : ''"
@@ -1078,6 +1087,22 @@ onMounted(async () => {
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div class="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700">
+              <span class="text-xs text-slate-500 dark:text-slate-400 leading-tight">
+                <span class="block md:inline">共 {{ filteredProducts.length }} 筆</span><span class="hidden md:inline">，</span><span class="block md:inline">第 {{ productPage }}/{{ productTotalPages }} 頁</span>
+              </span>
+              <div class="flex items-center gap-1">
+                <button :disabled="productPage === 1" @click="productPage--"
+                  class="px-2.5 py-1.5 text-xs rounded-md disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all">
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span class="text-xs text-slate-500 dark:text-slate-400 px-2">{{ productPage }} / {{ productTotalPages }}</span>
+                <button :disabled="productPage >= productTotalPages" @click="productPage++"
+                  class="px-2.5 py-1.5 text-xs rounded-md disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all">
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
