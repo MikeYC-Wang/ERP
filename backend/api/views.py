@@ -219,11 +219,12 @@ class ProductViewSet(viewsets.ModelViewSet):
             return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
         if upload.size > 5 * 1024 * 1024:
             return Response({'error': '檔案過大 (>5MB)'}, status=status.HTTP_400_BAD_REQUEST)
+        sheet = request.POST.get('sheet') or request.GET.get('sheet') or None
         try:
-            rows, warnings = parse_workbook(upload)
+            rows, warnings, sheet_names = parse_workbook(upload, sheet=sheet)
         except Exception as e:
             return Response({'error': f'解析失敗: {e}'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'rows': rows, 'warnings': warnings})
+        return Response({'rows': rows, 'warnings': warnings, 'sheet_names': sheet_names, 'selected_sheet': sheet or (sheet_names[0] if sheet_names else None)})
 
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):

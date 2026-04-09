@@ -117,14 +117,25 @@ def _to_int(val: Any) -> int | None:
         return None
 
 
-def parse_workbook(file_obj, all_sheets: bool = False) -> tuple[list[dict], list[str]]:
-    """Parse an xlsx file object and return (rows, warnings)."""
+def list_sheet_names(file_obj) -> list[str]:
+    wb = openpyxl.load_workbook(file_obj, data_only=True, read_only=True)
+    return list(wb.sheetnames)
+
+
+def parse_workbook(file_obj, all_sheets: bool = False, sheet: str | None = None) -> tuple[list[dict], list[str], list[str]]:
+    """Parse an xlsx file object and return (rows, warnings, sheet_names)."""
     wb = openpyxl.load_workbook(file_obj, data_only=True, read_only=True)
     rows: list[dict] = []
     warnings: list[str] = []
     seen_skus: set[str] = set()
+    sheet_names = list(wb.sheetnames)
 
-    sheets = wb.sheetnames if all_sheets else wb.sheetnames[:1]
+    if sheet and sheet in sheet_names:
+        sheets = [sheet]
+    elif all_sheets:
+        sheets = sheet_names
+    else:
+        sheets = sheet_names[:1]
 
     for sheet_name in sheets:
         ws = wb[sheet_name]
@@ -171,7 +182,7 @@ def parse_workbook(file_obj, all_sheets: bool = False) -> tuple[list[dict], list
             else:
                 i += 1
 
-    return rows, warnings
+    return rows, warnings, sheet_names
 
 
 def _row_to_product(

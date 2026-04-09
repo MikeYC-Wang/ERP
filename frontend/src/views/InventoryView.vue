@@ -706,6 +706,9 @@ const bulkWarnings = ref<string[]>([])
 const bulkSkipped = ref<{ index: number; sku: string; reason: string }[]>([])
 const bulkLoading = ref(false)
 const bulkFileInput = ref<HTMLInputElement | null>(null)
+const bulkFile = ref<File | null>(null)
+const bulkSheetNames = ref<string[]>([])
+const bulkSelectedSheet = ref<string>('')
 
 function emptyBulkRow(): BulkRow {
   return { sku: '', name: '', barcode: '', baseUnit: '個', unitPrice: 0, packQty: 0, packPrice: 0 }
@@ -721,6 +724,9 @@ function openBulkModal() {
   bulkRows.value = []
   bulkWarnings.value = []
   bulkSkipped.value = []
+  bulkFile.value = null
+  bulkSheetNames.value = []
+  bulkSelectedSheet.value = ''
 }
 
 function closeBulkModal() {
@@ -731,11 +737,19 @@ async function onBulkFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  bulkFile.value = file
+  await runBulkParse()
+}
+
+async function runBulkParse() {
+  if (!bulkFile.value) return
   bulkLoading.value = true
   try {
-    const res = await parseProductsXlsx(file)
+    const res = await parseProductsXlsx(bulkFile.value, bulkSelectedSheet.value || undefined)
     const rows = (res.data?.rows ?? []) as Array<Record<string, unknown>>
     bulkWarnings.value = (res.data?.warnings ?? []) as string[]
+    bulkSheetNames.value = (res.data?.sheet_names ?? []) as string[]
+    bulkSelectedSheet.value = (res.data?.selected_sheet as string) || bulkSheetNames.value[0] || ''
     bulkRows.value = rows.map(r => {
       const packagings = (r.packagings as Array<Record<string, unknown>>) ?? []
       const base = packagings.find(p => Number(p.quantity) === 1) ?? packagings[0] ?? {}
@@ -757,6 +771,10 @@ async function onBulkFileChange(e: Event) {
     bulkLoading.value = false
     if (bulkFileInput.value) bulkFileInput.value.value = ''
   }
+}
+
+async function onBulkSheetChange() {
+  await runBulkParse()
 }
 
 function goManualStep2() {
@@ -1672,6 +1690,14 @@ onMounted(async () => {
 
             <!-- Step 2 -->
             <div v-if="bulkStep === 2" class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3">
+              <div v-if="bulkSheetNames.length > 1" class="flex flex-col md:flex-row md:items-center gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-3">
+                <span class="text-sm font-medium text-purple-800 dark:text-purple-200">選擇工作表：</span>
+                <select v-model="bulkSelectedSheet" @change="onBulkSheetChange" :disabled="bulkLoading"
+                  class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-1.5 md:flex-1">
+                  <option v-for="s in bulkSheetNames" :key="s" :value="s">{{ s }}</option>
+                </select>
+                <span v-if="bulkLoading" class="text-xs text-slate-500">解析中…</span>
+              </div>
               <div v-if="bulkWarnings.length > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 text-sm text-yellow-800 dark:text-yellow-200">
                 <div class="font-semibold mb-1">解析警告</div>
                 <ul class="list-disc list-inside space-y-0.5">

@@ -152,9 +152,10 @@ export function bulkImportProducts(payload: BulkImportPayload): Promise<AxiosRes
   return apiClient.post('products/bulk-import/', payload)
 }
 
-export function parseProductsXlsx(file: File): Promise<AxiosResponse> {
+export function parseProductsXlsx(file: File, sheet?: string): Promise<AxiosResponse> {
   const fd = new FormData()
   fd.append('file', file)
+  if (sheet) fd.append('sheet', sheet)
   return apiClient.post('products/parse-xlsx/', fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
