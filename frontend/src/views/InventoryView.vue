@@ -484,6 +484,22 @@ const stocktakeSaveTimers: Record<number, ReturnType<typeof setTimeout>> = {}
 const stocktakeSavedFlags = ref<Record<number, boolean>>({})
 const stocktakeSavedHideTimers: Record<number, ReturnType<typeof setTimeout>> = {}
 
+// Shared toast for stocktake autosave feedback
+const saveToast = ref<{ visible: boolean; text: string; kind: 'success' | 'error' }>({
+  visible: false,
+  text: '',
+  kind: 'success',
+})
+let saveToastHideTimer: ReturnType<typeof setTimeout> | null = null
+function showSaveToast(text: string, kind: 'success' | 'error' = 'success') {
+  saveToast.value = { visible: true, text, kind }
+  if (saveToastHideTimer) clearTimeout(saveToastHideTimer)
+  const duration = kind === 'error' ? 3000 : 1200
+  saveToastHideTimer = setTimeout(() => {
+    saveToast.value.visible = false
+  }, duration)
+}
+
 function onStocktakeInput(productId: number) {
   if (stocktakeSaveTimers[productId]) {
     clearTimeout(stocktakeSaveTimers[productId])
@@ -503,8 +519,11 @@ function onStocktakeInput(productId: number) {
       stocktakeSavedHideTimers[productId] = setTimeout(() => {
         stocktakeSavedFlags.value[productId] = false
       }, 1500)
-    } catch (e) {
+      showSaveToast('已儲存', 'success')
+    } catch (e: unknown) {
       console.warn('Failed to autosave stocktake count', e)
+      const msg = (e as { message?: string })?.message || '未知錯誤'
+      showSaveToast(`儲存失敗：${msg}`, 'error')
     }
   }, 600)
 }
@@ -2020,8 +2039,33 @@ onMounted(async () => {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Stocktake autosave toast -->
+    <Teleport to="body">
+      <Transition name="save-toast-fade">
+        <div v-if="saveToast.visible"
+          :class="[
+            'fixed top-4 right-4 z-[9999] px-3 py-2 rounded-lg shadow-lg text-sm text-white pointer-events-none',
+            saveToast.kind === 'success' ? 'bg-emerald-600/80' : 'bg-rose-600/90'
+          ]"
+          style="max-width: 200px;">
+          {{ saveToast.text }}
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.save-toast-fade-enter-active,
+.save-toast-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.save-toast-fade-enter-from,
+.save-toast-fade-leave-to {
+  opacity: 0;
+}
+</style>
 
 <style scoped>
 .fade-enter-active,
