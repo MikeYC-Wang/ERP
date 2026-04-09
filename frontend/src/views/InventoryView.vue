@@ -1370,11 +1370,11 @@ onMounted(async () => {
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">供應商</label>
-                <input v-model="purchaseForm.supplier" list="supplier-list" type="text" placeholder="選擇或輸入供應商"
-                  class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                <datalist id="supplier-list">
-                  <option v-for="s in supplierNames" :key="s" :value="s" />
-                </datalist>
+                <select v-model="purchaseForm.supplier"
+                  class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  <option value="">-- 選擇供應商 --</option>
+                  <option v-for="s in suppliers" :key="s.id" :value="s.name">{{ s.name }}</option>
+                </select>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">日期</label>
@@ -1407,7 +1407,7 @@ onMounted(async () => {
               </div>
               <div class="divide-y divide-slate-100 dark:divide-slate-700">
                 <div v-for="(item, idx) in purchaseForm.items" :key="idx"
-                  class="px-4 py-2 flex flex-col gap-2 md:grid md:grid-cols-[1.4fr_1.2fr_0.8fr_0.8fr_40px] md:items-center md:gap-3">
+                  class="px-4 py-2 flex flex-col gap-2 md:grid md:grid-cols-[1.4fr_1.2fr_0.8fr_0.8fr_40px] md:items-start md:gap-3">
                   <div>
                     <label class="md:hidden text-xs text-slate-500 mb-1 block">商品</label>
                     <select v-model.number="item.product" @change="onPurchaseProductChange(idx)"
