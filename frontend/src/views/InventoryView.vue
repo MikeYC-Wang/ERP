@@ -70,6 +70,25 @@ function childCategoriesOf(parentId: number | null): CategoryRow[] {
   if (parentId === null) return []
   return categories.value.filter(c => c.parent === parentId)
 }
+function defaultPkg(p: Product) {
+  return p.packagings.find(k => k.is_default) || p.packagings.find(k => k.quantity === 1) || p.packagings[0]
+}
+function boxPkg(p: Product) {
+  return p.packagings.find(k => !k.is_default && k.quantity > 1)
+}
+function unitPriceOf(p: Product): number {
+  const d = defaultPkg(p); return d ? Number(d.price) : Number(p.price ?? 0)
+}
+function barcodeOf(p: Product): string {
+  const d = defaultPkg(p); return d?.barcode || ''
+}
+function packQtyOf(p: Product): number {
+  const b = boxPkg(p); return b ? Number(b.quantity) : 0
+}
+function packPriceOf(p: Product): number {
+  const b = boxPkg(p); return b ? Number(b.price) : 0
+}
+
 function categoryFullName(id: number | null): string {
   if (id === null) return ''
   const c = categories.value.find(x => x.id === id)
@@ -1016,12 +1035,14 @@ onMounted(async () => {
                 <thead>
                   <tr class="border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-gray-800 dark:to-slate-800">
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">SKU</th>
-                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">商品名稱</th>
+                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">名稱</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">分類</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">廠商</th>
+                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">條碼</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">基本單位</th>
-                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">預設售價</th>
-                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">最新成本</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">單價</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">整箱數</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">整箱價</th>
                     <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">安全庫存</th>
                     <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">操作</th>
                   </tr>
@@ -1037,9 +1058,11 @@ onMounted(async () => {
                     <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ product.name }}</td>
                     <td class="px-5 py-3 text-slate-500 dark:text-slate-400 mobile-hide">{{ categoryFullName(product.category) || '—' }}</td>
                     <td class="px-5 py-3 text-slate-500 dark:text-slate-400 mobile-hide">{{ product.supplierName || '—' }}</td>
+                    <td class="px-5 py-3 font-mono text-xs text-slate-500 dark:text-slate-400 mobile-hide">{{ barcodeOf(product) || '—' }}</td>
                     <td class="px-5 py-3 text-slate-500 dark:text-slate-400 mobile-hide">{{ product.baseUnit }}</td>
-                    <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ Number(product.price ?? 0).toFixed(2) }}</td>
-                    <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400 mobile-hide">${{ Number(product.lastCost ?? 0).toFixed(2) }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ unitPriceOf(product).toFixed(2) }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400 mobile-hide">{{ packQtyOf(product) || '—' }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400 mobile-hide">{{ packPriceOf(product) ? '$' + packPriceOf(product).toFixed(2) : '—' }}</td>
                     <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400 mobile-hide">{{ product.safetyStock }}</td>
                     <td class="px-5 py-3 text-right">
                       <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all mr-2" @click="openEditProduct(product)">
