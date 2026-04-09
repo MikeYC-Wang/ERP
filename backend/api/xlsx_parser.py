@@ -237,8 +237,8 @@ def _row_to_product(
     packagings = [{
         'name': base_unit or '單個',
         'quantity': 1,
-        'price': float(unit_price.quantize(Decimal('0.01'))),
-        'cost': float(unit_price.quantize(Decimal('0.01'))),
+        'price': float(unit_price.quantize(Decimal('0.001'))),
+        'cost': float(unit_price.quantize(Decimal('0.001'))),
         'barcode': barcode_str,
         'is_default': True,
     }]
@@ -246,8 +246,8 @@ def _row_to_product(
         packagings.append({
             'name': f'整箱({pack_qty})',
             'quantity': pack_qty,
-            'price': float(box_price.quantize(Decimal('0.01'))),
-            'cost': float(box_price.quantize(Decimal('0.01'))),
+            'price': float(box_price.quantize(Decimal('0.001'))),
+            'cost': float(box_price.quantize(Decimal('0.001'))),
             'barcode': barcode_box_str,
             'is_default': False,
         })

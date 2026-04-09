@@ -166,8 +166,8 @@ class Product(models.Model):
     sku = models.CharField('SKU 編號', max_length=50, unique=True)
     unit = models.CharField('單位', max_length=20, default='個')  # deprecated alias, kept for compat
     base_unit = models.CharField('基本單位', max_length=20, default='個')
-    current_price = models.DecimalField('目前售價', max_digits=12, decimal_places=2, default=0)
-    last_cost = models.DecimalField('最新成本', max_digits=12, decimal_places=2, default=0)
+    current_price = models.DecimalField('目前售價', max_digits=12, decimal_places=3, default=0)
+    last_cost = models.DecimalField('最新成本', max_digits=12, decimal_places=3, default=0)
     safety_stock = models.PositiveIntegerField('安全庫存量', default=0)
     supplier = models.ForeignKey(
         'Supplier',
@@ -208,8 +208,8 @@ class ProductPackaging(models.Model):
     )
     name = models.CharField('包裝名稱', max_length=50)
     quantity = models.PositiveIntegerField('包含基本單位數量', default=1)
-    price = models.DecimalField('包裝售價', max_digits=12, decimal_places=2, default=0)
-    cost = models.DecimalField('包裝成本', max_digits=12, decimal_places=2, default=0)
+    price = models.DecimalField('包裝售價', max_digits=12, decimal_places=3, default=0)
+    cost = models.DecimalField('包裝成本', max_digits=12, decimal_places=3, default=0)
     barcode = models.CharField('條碼', max_length=64, blank=True, default='')
     is_default = models.BooleanField('預設包裝', default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -274,7 +274,7 @@ class PurchaseApplyItem(models.Model):
     )
     quantity = models.PositiveIntegerField('數量')
     # fee = 每包裝單價 (per-packaging unit price)；line_total = fee * quantity
-    fee = models.DecimalField('每包裝單價', max_digits=12, decimal_places=2)
+    fee = models.DecimalField('每包裝單價', max_digits=12, decimal_places=3)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -303,7 +303,7 @@ class InventoryBatch(models.Model):
     )
     batch_quantity = models.PositiveIntegerField('批次進貨數量')
     remaining_quantity = models.PositiveIntegerField('剩餘數量')
-    unit_cost = models.DecimalField('單位成本', max_digits=12, decimal_places=2)
+    unit_cost = models.DecimalField('單位成本', max_digits=12, decimal_places=3)
     received_date = models.DateField('進貨日期')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -374,7 +374,7 @@ class OrderItem(models.Model):
         verbose_name='包裝',
     )
     quantity = models.PositiveIntegerField('數量')
-    selling_price = models.DecimalField('售價', max_digits=12, decimal_places=2)
+    selling_price = models.DecimalField('售價', max_digits=12, decimal_places=3)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

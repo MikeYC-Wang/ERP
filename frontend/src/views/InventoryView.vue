@@ -801,9 +801,9 @@ async function confirmBulkImport() {
     rows: bulkRows.value
       .filter(r => r.sku.trim() && r.name.trim() && !rowIsDuplicate(r))
       .map(r => {
-        const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
-        const unit = round2(r.unitPrice)
-        const pack = round2(r.packPrice)
+        const round3 = (n: number) => Math.round((Number(n) || 0) * 1000) / 1000
+        const unit = round3(r.unitPrice)
+        const pack = round3(r.packPrice)
         const packagings: PackagingForm[] = [{
           name: r.baseUnit || '單個',
           quantity: 1,
