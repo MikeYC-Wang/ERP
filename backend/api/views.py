@@ -168,6 +168,19 @@ class ProductViewSet(viewsets.ModelViewSet):
                         continue
                     seen.add(sku)
 
+                    def _r2(v):
+                        try:
+                            return round(float(v or 0), 2)
+                        except (TypeError, ValueError):
+                            return 0
+                    raw_pkgs = row.get('packagings') or []
+                    pkgs = []
+                    for pkg in raw_pkgs:
+                        pkgs.append({
+                            **pkg,
+                            'price': _r2(pkg.get('price')),
+                            'cost': _r2(pkg.get('cost')),
+                        })
                     payload = {
                         'sku': sku,
                         'name': row.get('name') or sku,
@@ -177,12 +190,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                         'current_price': 0,
                         'supplier': supplier_id,
                         'category': category_id,
-                        'packagings': row.get('packagings') or [],
+                        'packagings': pkgs,
                     }
                     # Default current_price from default packaging if any
-                    for pkg in payload['packagings']:
+                    for pkg in pkgs:
                         if pkg.get('is_default'):
-                            payload['current_price'] = pkg.get('price') or 0
+                            payload['current_price'] = _r2(pkg.get('price'))
                             break
 
                     serializer = ProductSerializer(data=payload)

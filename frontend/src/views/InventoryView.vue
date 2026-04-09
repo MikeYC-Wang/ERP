@@ -801,20 +801,23 @@ async function confirmBulkImport() {
     rows: bulkRows.value
       .filter(r => r.sku.trim() && r.name.trim() && !rowIsDuplicate(r))
       .map(r => {
+        const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100
+        const unit = round2(r.unitPrice)
+        const pack = round2(r.packPrice)
         const packagings: PackagingForm[] = [{
           name: r.baseUnit || '單個',
           quantity: 1,
-          price: Number(r.unitPrice) || 0,
-          cost: Number(r.unitPrice) || 0,
+          price: unit,
+          cost: unit,
           barcode: r.barcode,
           is_default: true,
         }]
-        if (r.packQty > 1 && r.packPrice > 0) {
+        if (r.packQty > 1 && pack > 0) {
           packagings.push({
             name: `整箱(${r.packQty})`,
             quantity: r.packQty,
-            price: Number(r.packPrice),
-            cost: Number(r.packPrice),
+            price: pack,
+            cost: pack,
             barcode: '',
             is_default: false,
           })
