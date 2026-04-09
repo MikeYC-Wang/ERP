@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import (
     AccountSubjectViewSet,
+    CategoryViewSet,
     ChangePasswordView,
     CustomerViewSet,
     DashboardExpenseBreakdownView,
@@ -26,6 +27,7 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'account-subjects', AccountSubjectViewSet)
+router.register(r'categories', CategoryViewSet)
 router.register(r'journal-vouchers', JournalVoucherViewSet)
 router.register(r'journal-voucher-items', JournalVoucherItemViewSet)
 router.register(r'products', ProductViewSet)

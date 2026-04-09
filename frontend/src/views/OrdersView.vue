@@ -19,7 +19,8 @@ interface Order {
 }
 
 interface Customer { id: number; name: string }
-interface Product { id: number; name: string; sku: string; price: number; unit: string }
+interface Packaging { id: number; name: string; quantity: number; price: number; is_default: boolean }
+interface Product { id: number; name: string; sku: string; price: number; unit: string; packagings: Packaging[] }
 
 // ─── Data ───
 const orders = ref<Order[]>([])
@@ -55,8 +56,13 @@ const orderForm = ref({
   order_date: new Date().toISOString().slice(0, 10),
   status: 'pending',
   total_amount: 0,
-  items: [{ product: 0, quantity: 1, selling_price: 0 }] as { product: number; quantity: number; selling_price: number }[],
+  items: [{ product: 0, packaging: null, quantity: 1, selling_price: 0 }] as { product: number; packaging: number | null; quantity: number; selling_price: number }[],
 })
+
+// TODO (M9): implement an edit-order modal so existing orders' packaging/price can be viewed & modified.
+
+// 追蹤每列上一個包裝的售價，用於判斷使用者是否手動改過 selling_price
+const prevPackagingPrice: Record<number, number> = {}
 
 const orderTotal = computed(() =>
   orderForm.value.items.reduce((s, i) => s + i.quantity * i.selling_price, 0),
@@ -70,13 +76,31 @@ function openAddOrder() {
     order_date: new Date().toISOString().slice(0, 10),
     status: 'pending',
     total_amount: 0,
-    items: [{ product: 0, quantity: 1, selling_price: 0 }],
+    items: [{ product: 0, packaging: null, quantity: 1, selling_price: 0 }],
   }
   showOrderModal.value = true
 }
 
 function addOrderItem() {
-  orderForm.value.items.push({ product: 0, quantity: 1, selling_price: 0 })
+  orderForm.value.items.push({ product: 0, packaging: null, quantity: 1, selling_price: 0 })
+}
+
+function getProductPackagings(productId: number): Packaging[] {
+  return products.value.find(p => p.id === productId)?.packagings ?? []
+}
+
+function onPackagingSelect(idx: number) {
+  const it = orderForm.value.items[idx]
+  const p = products.value.find(pp => pp.id === it.product)
+  if (!p) return
+  const pk = p.packagings.find(k => k.id === it.packaging)
+  if (!pk) return
+  // 僅在使用者尚未手動編輯 selling_price 時才自動填入 (等於上一個包裝的售價表示未編輯)
+  const prev = prevPackagingPrice[idx]
+  if (prev === undefined || Number(it.selling_price) === Number(prev)) {
+    it.selling_price = Number(pk.price)
+  }
+  prevPackagingPrice[idx] = Number(pk.price)
 }
 
 function removeOrderItem(idx: number) {
@@ -94,7 +118,15 @@ function onCustomerSelect() {
 
 function onProductSelect(idx: number) {
   const p = products.value.find(p => p.id === orderForm.value.items[idx].product)
-  if (p) orderForm.value.items[idx].selling_price = p.price
+  if (p) {
+    orderForm.value.items[idx].selling_price = p.price
+    const def = p.packagings.find(k => k.is_default) || p.packagings[0]
+    orderForm.value.items[idx].packaging = def?.id ?? null
+    if (def) {
+      orderForm.value.items[idx].selling_price = Number(def.price)
+      prevPackagingPrice[idx] = Number(def.price)
+    }
+  }
 }
 
 async function saveOrder() {
@@ -171,6 +203,13 @@ onMounted(async () => {
     products.value = list.map((p: Record<string, unknown>) => ({
       id: p.id as number, name: p.name as string, sku: p.sku as string,
       price: Number(p.current_price ?? 0), unit: p.unit as string,
+      packagings: ((p.packagings as Record<string, unknown>[] | undefined) ?? []).map(k => ({
+        id: k.id as number,
+        name: k.name as string,
+        quantity: Number(k.quantity ?? 1),
+        price: Number(k.price ?? 0),
+        is_default: Boolean(k.is_default),
+      })),
     }))
   }
 })
@@ -345,17 +384,27 @@ watch(activeTab, () => loadOrders())
                 </button>
               </div>
               <div class="divide-y divide-slate-100 dark:divide-slate-700">
-                <div v-for="(item, idx) in orderForm.items" :key="idx" class="flex items-center gap-2 px-4 py-2">
+                <div v-for="(item, idx) in orderForm.items" :key="idx"
+                  class="px-4 py-2 md:flex md:items-center md:gap-2 flex flex-col gap-2">
                   <select v-model.number="item.product" @change="onProductSelect(idx)"
-                    class="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    class="md:flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                     <option :value="0" disabled>選擇商品</option>
                     <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.sku }})</option>
                   </select>
+                  <select v-model.number="item.packaging" @change="onPackagingSelect(idx)"
+                    class="md:w-40 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                    <option :value="null" disabled>選擇包裝</option>
+                    <option v-for="pk in getProductPackagings(item.product)" :key="pk.id" :value="pk.id">
+                      {{ pk.name }} × {{ pk.quantity }}
+                    </option>
+                  </select>
                   <input v-model.number="item.quantity" type="number" min="1" placeholder="數量"
-                    class="w-20 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    class="md:w-20 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                   <input v-model.number="item.selling_price" type="number" min="0" step="0.01" placeholder="售價"
-                    class="w-24 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                  <button @click="removeOrderItem(idx)" type="button" class="text-red-400 hover:text-red-600 px-1" :disabled="orderForm.items.length <= 1">
+                    class="md:w-24 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                  <button @click="removeOrderItem(idx)" type="button"
+                    class="text-red-400 hover:text-red-600 min-w-[40px] min-h-[40px] flex items-center justify-center self-end md:self-auto"
+                    :disabled="orderForm.items.length <= 1">
                     <i class="fa-solid fa-xmark text-xs"></i>
                   </button>
                 </div>

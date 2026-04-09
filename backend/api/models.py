@@ -1,4 +1,49 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+
+
+class Category(models.Model):
+    """商品分類 (最多 2 層：大類 → 子類)"""
+
+    name = models.CharField('分類名稱', max_length=80)
+    parent = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='children',
+        verbose_name='上層分類',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '商品分類'
+        verbose_name_plural = '商品分類'
+        ordering = ['parent_id', 'name']
+        unique_together = [('parent', 'name')]
+
+    def clean(self):
+        super().clean()
+        if self.parent_id:
+            parent = self.parent
+            if parent and parent.parent_id:
+                raise ValidationError('分類最多只能 2 層 (大類 → 子類)')
+            if self.pk and parent and parent.pk == self.pk:
+                raise ValidationError('分類不可以自己為上層')
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def full_name(self):
+        if self.parent_id and self.parent:
+            return f'{self.parent.name} / {self.name}'
+        return self.name
+
+    def __str__(self):
+        return self.full_name
 
 
 class AccountSubject(models.Model):
@@ -119,9 +164,27 @@ class Product(models.Model):
 
     name = models.CharField('商品名稱', max_length=200)
     sku = models.CharField('SKU 編號', max_length=50, unique=True)
-    unit = models.CharField('單位', max_length=20, default='個')
+    unit = models.CharField('單位', max_length=20, default='個')  # deprecated alias, kept for compat
+    base_unit = models.CharField('基本單位', max_length=20, default='個')
     current_price = models.DecimalField('目前售價', max_digits=12, decimal_places=2, default=0)
+    last_cost = models.DecimalField('最新成本', max_digits=12, decimal_places=2, default=0)
     safety_stock = models.PositiveIntegerField('安全庫存量', default=0)
+    supplier = models.ForeignKey(
+        'Supplier',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='products',
+        verbose_name='供應商',
+    )
+    category = models.ForeignKey(
+        'Category',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='products',
+        verbose_name='分類',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -132,6 +195,33 @@ class Product(models.Model):
 
     def __str__(self):
         return f'{self.sku} {self.name}'
+
+
+class ProductPackaging(models.Model):
+    """商品包裝規格 — 一個商品可定義多種銷售/採購包裝"""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='packagings',
+        verbose_name='商品',
+    )
+    name = models.CharField('包裝名稱', max_length=50)
+    quantity = models.PositiveIntegerField('包含基本單位數量', default=1)
+    price = models.DecimalField('包裝售價', max_digits=12, decimal_places=2, default=0)
+    cost = models.DecimalField('包裝成本', max_digits=12, decimal_places=2, default=0)
+    barcode = models.CharField('條碼', max_length=64, blank=True, default='')
+    is_default = models.BooleanField('預設包裝', default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = '商品包裝'
+        verbose_name_plural = '商品包裝'
+        ordering = ['quantity', 'id']
+
+    def __str__(self):
+        return f'{self.product.sku} - {self.name} x{self.quantity}'
 
 
 class PurchaseOrder(models.Model):
@@ -174,8 +264,17 @@ class PurchaseApplyItem(models.Model):
         related_name='purchase_items',
         verbose_name='商品',
     )
+    packaging = models.ForeignKey(
+        ProductPackaging,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='purchase_items',
+        verbose_name='包裝',
+    )
     quantity = models.PositiveIntegerField('數量')
-    fee = models.DecimalField('單價金額', max_digits=12, decimal_places=2)
+    # fee = 每包裝單價 (per-packaging unit price)；line_total = fee * quantity
+    fee = models.DecimalField('每包裝單價', max_digits=12, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -265,6 +364,14 @@ class OrderItem(models.Model):
         on_delete=models.PROTECT,
         related_name='order_items',
         verbose_name='商品',
+    )
+    packaging = models.ForeignKey(
+        ProductPackaging,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='order_items',
+        verbose_name='包裝',
     )
     quantity = models.PositiveIntegerField('數量')
     selling_price = models.DecimalField('售價', max_digits=12, decimal_places=2)

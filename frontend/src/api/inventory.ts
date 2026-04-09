@@ -1,13 +1,64 @@
 import apiClient from './client'
 import type { AxiosResponse } from 'axios'
 
+export interface ProductPackaging {
+  id?: number
+  name: string
+  quantity: number
+  price: number
+  cost: number
+  barcode?: string
+  is_default: boolean
+}
+
 export interface Product {
   id: number
   sku: string
   name: string
   unit: string
+  base_unit?: string
   current_price: number
+  last_cost?: number
   safety_stock?: number
+  supplier?: number | null
+  supplier_name?: string
+  category?: number | null
+  category_name?: string
+  packagings?: ProductPackaging[]
+}
+
+export interface Category {
+  id: number
+  name: string
+  parent: number | null
+  parent_name?: string
+  full_name?: string
+  children_count?: number
+  depth?: number
+}
+
+export function getCategories(params?: Record<string, unknown>): Promise<AxiosResponse> {
+  return apiClient.get('categories/', { params })
+}
+
+export function getCategoryTree(): Promise<AxiosResponse> {
+  return apiClient.get('categories/tree/')
+}
+
+export function getCategory(id: number): Promise<AxiosResponse> {
+  return apiClient.get(`categories/${id}/`)
+}
+
+export function createCategory(payload: Partial<Category>): Promise<AxiosResponse> {
+  return apiClient.post('categories/', payload)
+}
+
+export function updateCategory(id: number, payload: Partial<Category>): Promise<AxiosResponse> {
+  return apiClient.put(`categories/${id}/`, payload)
+}
+
+export function deleteCategory(id: number): Promise<AxiosResponse> {
+  return apiClient.delete(`categories/${id}/`)
 }
 
 export interface InventoryBatch {
@@ -24,6 +75,7 @@ export interface InventoryBatch {
 export interface PurchaseOrderItem {
   id?: number
   product: number
+  packaging?: number | null
   quantity: number
   fee: number
 }
@@ -79,4 +131,31 @@ export function deletePurchaseOrder(id: number): Promise<AxiosResponse> {
 
 export function getStockSummary(): Promise<AxiosResponse> {
   return apiClient.get('inventory/stock-summary/')
+}
+
+export interface BulkImportRow {
+  sku: string
+  name: string
+  barcode?: string
+  base_unit?: string
+  safety_stock?: number
+  packagings: ProductPackaging[]
+}
+
+export interface BulkImportPayload {
+  supplier: number | null
+  category?: number | null
+  rows: BulkImportRow[]
+}
+
+export function bulkImportProducts(payload: BulkImportPayload): Promise<AxiosResponse> {
+  return apiClient.post('products/bulk-import/', payload)
+}
+
+export function parseProductsXlsx(file: File): Promise<AxiosResponse> {
+  const fd = new FormData()
+  fd.append('file', file)
+  return apiClient.post('products/parse-xlsx/', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }

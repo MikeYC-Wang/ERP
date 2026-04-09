@@ -13,6 +13,12 @@ import {
   updatePurchaseOrder,
   deletePurchaseOrder,
   receivePurchaseOrder,
+  bulkImportProducts,
+  parseProductsXlsx,
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
 } from '@/api/inventory'
 import { getSuppliers } from '@/api/suppliers'
 
@@ -23,61 +29,355 @@ const loading = ref(false)
 const activeTab = ref<'products' | 'stock' | 'count' | 'purchase'>('products')
 
 // ─── Tab 1: Products ───
+interface PackagingForm {
+  id?: number
+  name: string
+  quantity: number
+  price: number
+  cost: number
+  barcode: string
+  is_default: boolean
+}
+
 interface Product {
   id: number
   sku: string
   name: string
   unit: string
+  baseUnit: string
   price: number
+  lastCost: number
   safetyStock: number
+  supplier: number | null
+  supplierName: string
+  category: number | null
+  categoryName: string
+  packagings: PackagingForm[]
+}
+
+interface CategoryRow {
+  id: number
+  name: string
+  parent: number | null
+  parent_name?: string
+  full_name?: string
+  children_count?: number
+}
+
+const categories = ref<CategoryRow[]>([])
+const topCategories = computed(() => categories.value.filter(c => c.parent === null))
+function childCategoriesOf(parentId: number | null): CategoryRow[] {
+  if (parentId === null) return []
+  return categories.value.filter(c => c.parent === parentId)
+}
+function categoryFullName(id: number | null): string {
+  if (id === null) return ''
+  const c = categories.value.find(x => x.id === id)
+  if (!c) return ''
+  if (c.parent === null) return c.name
+  const parent = categories.value.find(x => x.id === c.parent)
+  return parent ? `${parent.name} / ${c.name}` : c.name
+}
+
+// Filter bar state (for product table)
+const filterTopCategory = ref<number | null>(null)
+const filterSubCategory = ref<number | null>(null)
+const filterSearch = ref('')
+
+const filteredProducts = computed(() => {
+  const q = filterSearch.value.trim().toLowerCase()
+  return products.value.filter(p => {
+    if (filterSubCategory.value !== null) {
+      if (p.category !== filterSubCategory.value) return false
+    } else if (filterTopCategory.value !== null) {
+      // top selected, any sub: match if product.category === top OR its parent === top
+      const catId = p.category
+      if (catId === null) return false
+      if (catId === filterTopCategory.value) return true
+      const cat = categories.value.find(c => c.id === catId)
+      if (!cat || cat.parent !== filterTopCategory.value) return false
+    }
+    if (q) {
+      if (!p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+})
+
+function onFilterTopChange() {
+  filterSubCategory.value = null
+}
+
+// Product modal cascading category
+const formTopCategory = ref<number | null>(null)
+
+// Category management modal
+const showCategoryModal = ref(false)
+const newTopName = ref('')
+const newChildName = ref<Record<number, string>>({})
+const editingCategoryId = ref<number | null>(null)
+const editingCategoryName = ref('')
+
+async function loadCategories() {
+  try {
+    const res = await getCategories({ page_size: 1000 })
+    const list = Array.isArray(res.data) ? res.data : res.data?.results ?? []
+    categories.value = list.map((c: Record<string, unknown>) => ({
+      id: c.id as number,
+      name: c.name as string,
+      parent: (c.parent as number | null) ?? null,
+      parent_name: (c.parent_name as string) || '',
+      full_name: (c.full_name as string) || '',
+      children_count: Number(c.children_count ?? 0),
+    }))
+  } catch (e) {
+    console.warn('Failed to load categories', e)
+  }
+}
+
+function openCategoryModal() {
+  showCategoryModal.value = true
+  newTopName.value = ''
+  newChildName.value = {}
+  editingCategoryId.value = null
+  editingCategoryName.value = ''
+}
+
+async function addTopCategory() {
+  const name = newTopName.value.trim()
+  if (!name) { alert('請輸入分類名稱'); return }
+  try {
+    await createCategory({ name, parent: null })
+    newTopName.value = ''
+    await loadCategories()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: Record<string, unknown> } }
+    alert('新增失敗：' + JSON.stringify(err.response?.data ?? e))
+  }
+}
+
+async function addChildCategory(parentId: number) {
+  const name = (newChildName.value[parentId] || '').trim()
+  if (!name) { alert('請輸入子類名稱'); return }
+  try {
+    await createCategory({ name, parent: parentId })
+    newChildName.value[parentId] = ''
+    await loadCategories()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: Record<string, unknown> } }
+    alert('新增失敗：' + JSON.stringify(err.response?.data ?? e))
+  }
+}
+
+function startEditCategory(cat: CategoryRow) {
+  editingCategoryId.value = cat.id
+  editingCategoryName.value = cat.name
+}
+
+async function saveEditCategory() {
+  if (editingCategoryId.value === null) return
+  const name = editingCategoryName.value.trim()
+  if (!name) { alert('名稱必填'); return }
+  const cat = categories.value.find(c => c.id === editingCategoryId.value)
+  if (!cat) return
+  try {
+    await updateCategory(cat.id, { name, parent: cat.parent })
+    editingCategoryId.value = null
+    editingCategoryName.value = ''
+    await loadCategories()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: Record<string, unknown> } }
+    alert('更新失敗：' + JSON.stringify(err.response?.data ?? e))
+  }
+}
+
+async function removeCategory(id: number) {
+  if (!confirm('確定要刪除此分類？')) return
+  try {
+    await deleteCategory(id)
+    await loadCategories()
+  } catch (e: unknown) {
+    const err = e as { response?: { data?: { error?: string } } }
+    alert(err.response?.data?.error || '刪除失敗')
+  }
 }
 
 const products = ref<Product[]>([])
+const suppliers = ref<{ id: number; name: string }[]>([])
 
 const showProductModal = ref(false)
 const editingProduct = ref<Product | null>(null)
-const productForm = ref({ sku: '', name: '', unit: '', price: 0, safetyStock: 0 })
+const productForm = ref<{
+  sku: string
+  name: string
+  baseUnit: string
+  safetyStock: number
+  supplier: number | null
+  category: number | null
+  packagings: PackagingForm[]
+}>({
+  sku: '',
+  name: '',
+  baseUnit: '個',
+  safetyStock: 0,
+  supplier: null,
+  category: null,
+  packagings: [{ name: '單個', quantity: 1, price: 0, cost: 0, barcode: '', is_default: true }],
+})
+
+function newDefaultPackaging(baseUnit: string): PackagingForm {
+  return { name: baseUnit || '單個', quantity: 1, price: 0, cost: 0, barcode: '', is_default: true }
+}
 
 function openAddProduct() {
   editingProduct.value = null
-  productForm.value = { sku: '', name: '', unit: '', price: 0, safetyStock: 0 }
+  productForm.value = {
+    sku: '',
+    name: '',
+    baseUnit: '個',
+    safetyStock: 0,
+    supplier: null,
+    category: null,
+    packagings: [newDefaultPackaging('個')],
+  }
+  formTopCategory.value = null
   showProductModal.value = true
 }
 
 function openEditProduct(product: Product) {
   editingProduct.value = product
-  productForm.value = { sku: product.sku, name: product.name, unit: product.unit, price: product.price, safetyStock: product.safetyStock }
+  productForm.value = {
+    sku: product.sku,
+    name: product.name,
+    baseUnit: product.baseUnit || product.unit || '個',
+    safetyStock: product.safetyStock,
+    supplier: product.supplier,
+    category: product.category,
+    packagings: product.packagings.length > 0
+      ? product.packagings.map(p => ({ ...p }))
+      : [newDefaultPackaging(product.baseUnit || '個')],
+  }
+  // derive top-level category for cascading dropdown
+  if (product.category !== null) {
+    const cat = categories.value.find(c => c.id === product.category)
+    if (cat) {
+      formTopCategory.value = cat.parent === null ? cat.id : cat.parent
+    } else {
+      formTopCategory.value = null
+    }
+  } else {
+    formTopCategory.value = null
+  }
   showProductModal.value = true
 }
 
+function onFormTopCategoryChange() {
+  productForm.value.category = formTopCategory.value
+}
+
+function addPackagingRow() {
+  productForm.value.packagings.push({
+    name: '', quantity: 1, price: 0, cost: 0, barcode: '', is_default: false,
+  })
+}
+
+function removePackagingRow(idx: number) {
+  const row = productForm.value.packagings[idx]
+  // Don't allow removing the last qty=1 row
+  const baseRows = productForm.value.packagings.filter(p => Number(p.quantity) === 1)
+  if (Number(row.quantity) === 1 && baseRows.length <= 1) {
+    alert('必須保留至少一個基本包裝 (數量=1)')
+    return
+  }
+  productForm.value.packagings.splice(idx, 1)
+  // Re-assign default if we removed the default
+  if (row.is_default && productForm.value.packagings.length > 0) {
+    productForm.value.packagings[0].is_default = true
+  }
+}
+
+function setDefaultPackaging(idx: number) {
+  productForm.value.packagings.forEach((p, i) => { p.is_default = i === idx })
+}
+
+function mapProductFromApi(p: Record<string, unknown>): Product {
+  const pkgs = (p.packagings as Record<string, unknown>[] | undefined) ?? []
+  return {
+    id: p.id as number,
+    sku: p.sku as string,
+    name: p.name as string,
+    unit: (p.unit as string) || '',
+    baseUnit: (p.base_unit as string) || (p.unit as string) || '個',
+    price: Number(p.current_price ?? 0),
+    lastCost: Number(p.last_cost ?? 0),
+    safetyStock: Number(p.safety_stock ?? 0),
+    supplier: (p.supplier as number | null) ?? null,
+    supplierName: (p.supplier_name as string) || '',
+    category: (p.category as number | null) ?? null,
+    categoryName: (p.category_name as string) || '',
+    packagings: pkgs.map(k => ({
+      id: k.id as number,
+      name: k.name as string,
+      quantity: Number(k.quantity ?? 1),
+      price: Number(k.price ?? 0),
+      cost: Number(k.cost ?? 0),
+      barcode: (k.barcode as string) || '',
+      is_default: Boolean(k.is_default),
+    })),
+  }
+}
+
 async function saveProduct() {
-  if (editingProduct.value) {
-    try {
-      const { price, safetyStock, ...rest } = productForm.value
-      await updateProduct(editingProduct.value.id, { ...rest, current_price: price, safety_stock: safetyStock })
-    } catch (e) {
-      console.warn('Failed to update product via API, applying locally', e)
+  // Validate
+  const f = productForm.value
+  if (!f.sku || !f.name) { alert('SKU 與商品名稱為必填'); return }
+  if (f.packagings.length === 0) { alert('至少需一個包裝'); return }
+  const defaults = f.packagings.filter(p => p.is_default)
+  if (defaults.length !== 1) { alert('必須恰好一個預設包裝'); return }
+  if (!f.packagings.some(p => Number(p.quantity) === 1)) {
+    alert('必須包含一個基本包裝 (數量=1)'); return
+  }
+  if (f.packagings.some(p => Number(p.quantity) < 1)) {
+    alert('每個包裝數量必須 >= 1'); return
+  }
+
+  // Use default packaging's price as current_price
+  const defaultPkg = defaults[0]
+  const payload = {
+    sku: f.sku,
+    name: f.name,
+    unit: f.baseUnit,
+    base_unit: f.baseUnit,
+    current_price: defaultPkg.price,
+    safety_stock: f.safetyStock,
+    supplier: f.supplier,
+    category: f.category,
+    packagings: f.packagings.map(p => ({
+      name: p.name || f.baseUnit,
+      quantity: Number(p.quantity),
+      price: Number(p.price),
+      cost: Number(p.cost),
+      barcode: p.barcode || '',
+      is_default: p.is_default,
+    })),
+  }
+
+  try {
+    if (editingProduct.value) {
+      const res = await updateProduct(editingProduct.value.id, payload as Record<string, unknown>)
+      const mapped = mapProductFromApi(res.data)
+      const idx = products.value.findIndex(p => p.id === editingProduct.value!.id)
+      if (idx !== -1) products.value[idx] = mapped
+    } else {
+      const res = await createProduct(payload as Record<string, unknown>)
+      products.value.push(mapProductFromApi(res.data))
     }
-    const idx = products.value.findIndex((p) => p.id === editingProduct.value!.id)
-    if (idx !== -1) {
-      products.value[idx] = { ...products.value[idx], ...productForm.value }
-    }
-  } else {
-    try {
-      const { price: formPrice, safetyStock, ...formRest } = productForm.value
-      const res = await createProduct({ ...formRest, current_price: formPrice, safety_stock: safetyStock })
-      const p = res.data
-      products.value.push({ id: p.id, sku: p.sku, name: p.name, unit: p.unit, price: Number(p.current_price ?? 0), safetyStock: Number(p.safety_stock ?? 0) })
-      showProductModal.value = false
-      return
-    } catch (e) {
-      console.warn('Failed to create product via API, applying locally', e)
-    }
-    const newId = Math.max(...products.value.map((p) => p.id), 0) + 1
-    products.value.push({ id: newId, ...productForm.value })
+  } catch (e) {
+    console.warn('Failed to save product via API', e)
+    alert('儲存失敗')
+    return
   }
   showProductModal.value = false
-  // Refresh stock summary after product change
   await loadStockSummary()
 }
 
@@ -165,11 +465,12 @@ async function loadStockSummary() {
 interface PurchaseItem {
   id?: number
   product: number
+  packaging: number | null
   quantity: number
   fee: number
 }
 
-interface PurchaseOrder {
+interface PurchaseOrderLocal {
   id: number
   order_number: string
   supplier: string
@@ -177,6 +478,7 @@ interface PurchaseOrder {
   status: string
   items: PurchaseItem[]
 }
+type PurchaseOrder = PurchaseOrderLocal
 
 const STATUS_LABELS: Record<string, string> = {
   draft: '草稿', confirmed: '已確認', received: '已到貨', cancelled: '已取消',
@@ -197,7 +499,7 @@ const purchaseForm = ref({
   supplier: '',
   date: new Date().toISOString().slice(0, 10),
   status: 'draft',
-  items: [{ product: 0, quantity: 1, fee: 0 }] as PurchaseItem[],
+  items: [{ product: 0, packaging: null, quantity: 1, fee: 0 }] as PurchaseItem[],
 })
 const purchaseStatusFilter = ref('all')
 
@@ -214,7 +516,7 @@ function openAddPurchase() {
     supplier: '',
     date: new Date().toISOString().slice(0, 10),
     status: 'draft',
-    items: [{ product: 0, quantity: 1, fee: 0 }],
+    items: [{ product: 0, packaging: null, quantity: 1, fee: 0 }],
   }
   showPurchaseModal.value = true
 }
@@ -226,13 +528,28 @@ function openEditPurchase(p: PurchaseOrder) {
     supplier: p.supplier,
     date: p.date,
     status: p.status,
-    items: p.items.map(i => ({ id: i.id, product: i.product, quantity: i.quantity, fee: i.fee })),
+    items: p.items.map(i => ({ id: i.id, product: i.product, packaging: (i as PurchaseItem).packaging ?? null, quantity: i.quantity, fee: i.fee })),
   }
   showPurchaseModal.value = true
 }
 
 function addPurchaseItem() {
-  purchaseForm.value.items.push({ product: 0, quantity: 1, fee: 0 })
+  purchaseForm.value.items.push({ product: 0, packaging: null, quantity: 1, fee: 0 })
+}
+
+function onPurchaseProductChange(idx: number) {
+  const item = purchaseForm.value.items[idx]
+  const prod = products.value.find(p => p.id === item.product)
+  if (prod) {
+    const def = prod.packagings.find(pk => pk.is_default) || prod.packagings[0]
+    item.packaging = def?.id ?? null
+    // 商品切換：一律重置 fee 為新包裝的 cost (之前 fee 屬於不同商品)
+    item.fee = def && Number(def.cost) > 0 ? Number(def.cost) : 0
+  }
+}
+
+function getProductPackagings(productId: number): PackagingForm[] {
+  return products.value.find(p => p.id === productId)?.packagings ?? []
 }
 
 function removePurchaseItem(idx: number) {
@@ -284,7 +601,7 @@ function exportPurchasePDF(po: PurchaseOrder) {
   doc.rect(14, y - 5, pageW - 28, 8, 'F')
   doc.text('Product ID', 16, y)
   doc.text('Qty', 80, y)
-  doc.text('Unit Price', 105, y)
+  doc.text('Package Price', 105, y)
   doc.text('Amount', 150, y)
 
   // Table rows
@@ -334,6 +651,190 @@ async function confirmReceive(id: number) {
   await loadStockSummary()
 }
 
+// ─── Bulk Import ───
+interface BulkRow {
+  sku: string
+  name: string
+  barcode: string
+  baseUnit: string
+  unitPrice: number
+  packQty: number
+  packPrice: number
+}
+
+const showBulkModal = ref(false)
+const bulkStep = ref<1 | 2>(1)
+const bulkMode = ref<'xlsx' | 'manual'>('xlsx')
+const bulkSupplier = ref<number | null>(null)
+const bulkTopCategory = ref<number | null>(null)
+const bulkCategory = ref<number | null>(null)
+function onBulkTopCategoryChange() {
+  bulkCategory.value = bulkTopCategory.value
+}
+const bulkRows = ref<BulkRow[]>([])
+const bulkWarnings = ref<string[]>([])
+const bulkSkipped = ref<{ index: number; sku: string; reason: string }[]>([])
+const bulkLoading = ref(false)
+const bulkFileInput = ref<HTMLInputElement | null>(null)
+
+function emptyBulkRow(): BulkRow {
+  return { sku: '', name: '', barcode: '', baseUnit: '個', unitPrice: 0, packQty: 0, packPrice: 0 }
+}
+
+function openBulkModal() {
+  showBulkModal.value = true
+  bulkStep.value = 1
+  bulkMode.value = 'xlsx'
+  bulkSupplier.value = suppliers.value[0]?.id ?? null
+  bulkTopCategory.value = null
+  bulkCategory.value = null
+  bulkRows.value = []
+  bulkWarnings.value = []
+  bulkSkipped.value = []
+}
+
+function closeBulkModal() {
+  showBulkModal.value = false
+}
+
+async function onBulkFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  bulkLoading.value = true
+  try {
+    const res = await parseProductsXlsx(file)
+    const rows = (res.data?.rows ?? []) as Array<Record<string, unknown>>
+    bulkWarnings.value = (res.data?.warnings ?? []) as string[]
+    bulkRows.value = rows.map(r => {
+      const packagings = (r.packagings as Array<Record<string, unknown>>) ?? []
+      const base = packagings.find(p => Number(p.quantity) === 1) ?? packagings[0] ?? {}
+      const box = packagings.find(p => Number(p.quantity) > 1)
+      return {
+        sku: String(r.sku ?? ''),
+        name: String(r.name ?? ''),
+        barcode: String(r.barcode ?? ''),
+        baseUnit: String(r.base_unit ?? '個'),
+        unitPrice: Number(base.price ?? 0),
+        packQty: box ? Number(box.quantity) : 0,
+        packPrice: box ? Number(box.price) : 0,
+      }
+    })
+    bulkStep.value = 2
+  } catch (err) {
+    alert('解析失敗：' + ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? String(err)))
+  } finally {
+    bulkLoading.value = false
+    if (bulkFileInput.value) bulkFileInput.value.value = ''
+  }
+}
+
+function goManualStep2() {
+  bulkRows.value = [emptyBulkRow()]
+  bulkWarnings.value = []
+  bulkStep.value = 2
+}
+
+function addBulkRow() {
+  bulkRows.value.push(emptyBulkRow())
+}
+function removeBulkRow(idx: number) {
+  bulkRows.value.splice(idx, 1)
+}
+function clearBulkRows() {
+  if (confirm('確定全部清空？')) bulkRows.value = []
+}
+
+const bulkInvalidCount = computed(() => {
+  const skuSet = new Set<string>()
+  const dupes = new Set<string>()
+  for (const r of bulkRows.value) {
+    const k = r.sku.trim()
+    if (!k) continue
+    if (skuSet.has(k)) dupes.add(k)
+    skuSet.add(k)
+  }
+  return bulkRows.value.filter(r => !r.sku.trim() || !r.name.trim() || dupes.has(r.sku.trim())).length
+})
+
+function rowIsDuplicate(row: BulkRow): boolean {
+  const k = row.sku.trim()
+  if (!k) return false
+  return bulkRows.value.filter(r => r.sku.trim() === k).length > 1
+}
+
+async function confirmBulkImport() {
+  if (!bulkSupplier.value) {
+    alert('請選擇供應商')
+    return
+  }
+  if (bulkRows.value.length === 0) {
+    alert('沒有任何資料')
+    return
+  }
+  if (bulkInvalidCount.value > 0) {
+    if (!confirm(`有 ${bulkInvalidCount.value} 筆不合法資料會被跳過，繼續？`)) return
+  }
+  const payload = {
+    supplier: bulkSupplier.value,
+    rows: bulkRows.value
+      .filter(r => r.sku.trim() && r.name.trim() && !rowIsDuplicate(r))
+      .map(r => {
+        const packagings: PackagingForm[] = [{
+          name: r.baseUnit || '單個',
+          quantity: 1,
+          price: Number(r.unitPrice) || 0,
+          cost: Number(r.unitPrice) || 0,
+          barcode: r.barcode,
+          is_default: true,
+        }]
+        if (r.packQty > 1 && r.packPrice > 0) {
+          packagings.push({
+            name: `整箱(${r.packQty})`,
+            quantity: r.packQty,
+            price: Number(r.packPrice),
+            cost: Number(r.packPrice),
+            barcode: '',
+            is_default: false,
+          })
+        }
+        return {
+          sku: r.sku.trim(),
+          name: r.name.trim(),
+          barcode: r.barcode,
+          base_unit: r.baseUnit || '個',
+          safety_stock: 0,
+          category: bulkCategory.value,
+          packagings,
+        }
+      }),
+  }
+  bulkLoading.value = true
+  try {
+    const res = await bulkImportProducts(payload)
+    const created = res.data?.created ?? 0
+    const skipped = res.data?.skipped ?? []
+    bulkSkipped.value = skipped
+    alert(`成功匯入 ${created} 筆，跳過 ${skipped.length} 筆`)
+    await reloadProducts()
+    if (skipped.length === 0) {
+      closeBulkModal()
+    }
+  } catch (err) {
+    alert('匯入失敗：' + ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? String(err)))
+  } finally {
+    bulkLoading.value = false
+  }
+}
+
+async function reloadProducts() {
+  const res = await getProducts().catch(() => null)
+  if (res?.data) {
+    const list = Array.isArray(res.data) ? res.data : res.data?.results ?? []
+    products.value = list.map((p: Record<string, unknown>) => mapProductFromApi(p))
+  }
+}
+
 // ─── Load from API ───
 onMounted(async () => {
   loading.value = true
@@ -346,14 +847,7 @@ onMounted(async () => {
     ])
     if (productsRes?.data) {
       const productList = Array.isArray(productsRes.data) ? productsRes.data : productsRes.data?.results ?? []
-      products.value = productList.map((p: Record<string, unknown>) => ({
-        id: p.id as number,
-        sku: p.sku as string,
-        name: p.name as string,
-        unit: p.unit as string,
-        price: Number(p.current_price ?? 0),
-        safetyStock: Number(p.safety_stock ?? 0),
-      }))
+      products.value = productList.map((p: Record<string, unknown>) => mapProductFromApi(p))
     }
     const productMap = new Map<number, Product>()
     for (const p of products.value) {
@@ -381,9 +875,11 @@ onMounted(async () => {
     }
     if (suppliersRes?.data) {
       const list = Array.isArray(suppliersRes.data) ? suppliersRes.data : suppliersRes.data?.results ?? []
-      supplierNames.value = list.map((s: Record<string, unknown>) => s.name as string)
+      suppliers.value = list.map((s: Record<string, unknown>) => ({ id: s.id as number, name: s.name as string }))
+      supplierNames.value = suppliers.value.map(s => s.name)
     }
     await loadStockSummary()
+    await loadCategories()
   } catch (e) {
     console.warn('Inventory API unavailable, using fallback data', e)
   } finally {
@@ -464,15 +960,47 @@ onMounted(async () => {
       <!-- Tab 1: Product Management -->
       <Transition name="fade" mode="out-in">
         <div v-if="activeTab === 'products'" key="products">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex flex-wrap items-center justify-between mb-4 gap-2">
             <h2 class="text-sm font-semibold text-slate-700 dark:text-stone-200">商品管理</h2>
-            <button
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
-              @click="openAddProduct"
-            >
-              <i class="fa-solid fa-plus text-xs"></i>
-              新增商品
-            </button>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+                @click="openCategoryModal"
+              >
+                <i class="fa-solid fa-sitemap text-xs"></i>
+                分類管理
+              </button>
+              <button
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+                @click="openBulkModal"
+              >
+                <i class="fa-solid fa-file-import text-xs"></i>
+                批次新增
+              </button>
+              <button
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all duration-300"
+                @click="openAddProduct"
+              >
+                <i class="fa-solid fa-plus text-xs"></i>
+                新增商品
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter bar -->
+          <div class="flex flex-col md:flex-row md:items-center gap-2 mb-3">
+            <select v-model.number="filterTopCategory" @change="onFilterTopChange"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44">
+              <option :value="null">全部大類</option>
+              <option v-for="c in topCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select v-model.number="filterSubCategory" :disabled="filterTopCategory === null"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44 disabled:opacity-50">
+              <option :value="null">全部子類</option>
+              <option v-for="c in childCategoriesOf(filterTopCategory)" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <input v-model="filterSearch" type="text" placeholder="搜尋商品名稱 / SKU"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:flex-1" />
           </div>
 
           <div class="bg-white dark:bg-gray-800/90 dark:ring-1 dark:ring-white/5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-teal-400">
@@ -482,24 +1010,30 @@ onMounted(async () => {
                   <tr class="border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-gray-800 dark:to-slate-800">
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">SKU</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">商品名稱</th>
-                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">單位</th>
-                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">售價</th>
-                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">安全庫存</th>
+                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">分類</th>
+                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">廠商</th>
+                    <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">基本單位</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">預設售價</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">最新成本</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mobile-hide">安全庫存</th>
                     <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(product, index) in products"
+                    v-for="(product, index) in filteredProducts"
                     :key="product.id"
                     class="border-b border-slate-100 dark:border-slate-700/50 hover:bg-amber-50 dark:hover:bg-gray-700/50 hover:translate-x-1 transition-all"
                     :class="index % 2 === 1 ? 'bg-orange-50/30 dark:bg-gray-800/50' : ''"
                   >
                     <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ product.sku }}</td>
                     <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ product.name }}</td>
-                    <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ product.unit }}</td>
+                    <td class="px-5 py-3 text-slate-500 dark:text-slate-400 mobile-hide">{{ categoryFullName(product.category) || '—' }}</td>
+                    <td class="px-5 py-3 text-slate-500 dark:text-slate-400 mobile-hide">{{ product.supplierName || '—' }}</td>
+                    <td class="px-5 py-3 text-slate-500 dark:text-slate-400 mobile-hide">{{ product.baseUnit }}</td>
                     <td class="px-5 py-3 text-right font-mono text-slate-700 dark:text-stone-200">${{ Number(product.price ?? 0).toFixed(2) }}</td>
-                    <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400">{{ product.safetyStock }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400 mobile-hide">${{ Number(product.lastCost ?? 0).toFixed(2) }}</td>
+                    <td class="px-5 py-3 text-right font-mono text-slate-500 dark:text-slate-400 mobile-hide">{{ product.safetyStock }}</td>
                     <td class="px-5 py-3 text-right">
                       <button class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all mr-2" @click="openEditProduct(product)">
                         <i class="fa-solid fa-pen-to-square"></i> 編輯
@@ -791,18 +1325,49 @@ onMounted(async () => {
                   <i class="fa-solid fa-plus"></i> 新增明細
                 </button>
               </div>
+              <!-- Desktop header -->
+              <div class="hidden md:grid grid-cols-[1.4fr_1.2fr_0.8fr_0.8fr_40px] gap-3 px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                <div>商品</div><div>包裝</div><div>數量</div><div>單價</div><div></div>
+              </div>
               <div class="divide-y divide-slate-100 dark:divide-slate-700">
-                <div v-for="(item, idx) in purchaseForm.items" :key="idx" class="flex items-center gap-2 px-4 py-2">
-                  <select v-model.number="item.product"
-                    class="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                    <option :value="0" disabled>選擇商品</option>
-                    <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.sku }})</option>
-                  </select>
-                  <input v-model.number="item.quantity" type="number" min="1" placeholder="數量"
-                    class="w-20 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                  <input v-model.number="item.fee" type="number" min="0" step="0.01" placeholder="單價"
-                    class="w-24 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                  <button @click="removePurchaseItem(idx)" type="button" class="text-red-400 hover:text-red-600 px-1" :disabled="purchaseForm.items.length <= 1">
+                <div v-for="(item, idx) in purchaseForm.items" :key="idx"
+                  class="px-4 py-2 flex flex-col gap-2 md:grid md:grid-cols-[1.4fr_1.2fr_0.8fr_0.8fr_40px] md:items-center md:gap-3">
+                  <div>
+                    <label class="md:hidden text-xs text-slate-500 mb-1 block">商品</label>
+                    <select v-model.number="item.product" @change="onPurchaseProductChange(idx)"
+                      class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                      <option :value="0" disabled>選擇商品</option>
+                      <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.sku }})</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="md:hidden text-xs text-slate-500 mb-1 block">包裝</label>
+                    <select v-model.number="item.packaging"
+                      class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                      <option :value="null" disabled>選擇包裝</option>
+                      <option v-for="pk in getProductPackagings(item.product)" :key="pk.id" :value="pk.id">
+                        {{ pk.name }} × {{ pk.quantity }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="flex flex-col">
+                    <label class="md:hidden text-xs text-slate-500 mb-1 block">數量</label>
+                    <input v-model.number="item.quantity" type="number" min="1" placeholder="數量"
+                      class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    <span v-if="item.product && (getProductPackagings(item.product).find(pk => pk.id === item.packaging)?.quantity || 1) > 1" class="text-[10px] text-slate-400 mt-0.5">
+                      共 {{ (Number(item.quantity) || 0) * (getProductPackagings(item.product).find(pk => pk.id === item.packaging)?.quantity || 1) }}
+                      {{ products.find(p => p.id === item.product)?.baseUnit || '' }}
+                    </span>
+                  </div>
+                  <div>
+                    <label class="md:hidden text-xs text-slate-500 mb-1 block">單價</label>
+                    <input v-model.number="item.fee" type="number" min="0" step="0.01" placeholder="每包裝單價"
+                      title="每包裝單價"
+                      class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                  </div>
+                  <button @click="removePurchaseItem(idx)" type="button"
+                    class="text-red-400 hover:text-red-600 min-w-[40px] min-h-[40px] flex items-center justify-center self-end md:self-auto"
+                    :disabled="purchaseForm.items.length <= 1">
                     <i class="fa-solid fa-xmark text-xs"></i>
                   </button>
                 </div>
@@ -830,7 +1395,7 @@ onMounted(async () => {
       <Transition name="modal">
         <div v-if="showProductModal" class="fixed inset-0 z-50 flex items-center justify-center">
           <div class="absolute inset-0 bg-black/40" @click="showProductModal = false"></div>
-          <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 modal-enter-active">
+          <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-3xl mx-4 p-6 max-h-[90vh] overflow-y-auto modal-enter-active">
             <div class="flex items-center justify-between mb-5">
               <h3 class="text-lg font-semibold text-slate-900 dark:text-stone-50">
                 {{ editingProduct ? '編輯商品' : '新增商品' }}
@@ -840,54 +1405,107 @@ onMounted(async () => {
               </button>
             </div>
             <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">SKU</label>
-                <input
-                  v-model="productForm.sku"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholder="例如 PF-001"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">商品名稱</label>
-                <input
-                  v-model="productForm.name"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholder="商品名稱"
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">單位</label>
-                <input
-                  v-model="productForm.unit"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholder="例如 袋、條、組"
-                />
-              </div>
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">售價</label>
-                  <input
-                    v-model.number="productForm.price"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    placeholder="0.00"
-                  />
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">SKU</label>
+                  <input v-model="productForm.sku" type="text" placeholder="例如 PF-001"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">商品名稱</label>
+                  <input v-model="productForm.name" type="text" placeholder="商品名稱"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">廠商</label>
+                  <select v-model.number="productForm.supplier"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option :value="null">-- 無 --</option>
+                    <option v-if="suppliers.length === 0" disabled>尚無供應商，請先到供應商管理建立</option>
+                    <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">大類</label>
+                  <select v-model.number="formTopCategory" @change="onFormTopCategoryChange"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option :value="null">-- 無 --</option>
+                    <option v-for="c in topCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">子類</label>
+                  <select v-model.number="productForm.category" :disabled="formTopCategory === null"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50">
+                    <option :value="formTopCategory">（不選子類，使用大類）</option>
+                    <option v-for="c in childCategoriesOf(formTopCategory)" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">基本單位</label>
+                  <input v-model="productForm.baseUnit" type="text" placeholder="例如 罐、包、個"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">安全庫存量</label>
-                  <input
-                    v-model.number="productForm.safetyStock"
-                    type="number"
-                    min="0"
-                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    placeholder="0"
-                  />
+                  <input v-model.number="productForm.safetyStock" type="number" min="0" placeholder="0"
+                    class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+              </div>
+
+              <!-- Packagings -->
+              <div class="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                  <span class="text-xs font-semibold text-slate-600 dark:text-slate-300">包裝規格</span>
+                  <button @click="addPackagingRow" type="button"
+                    class="inline-flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800">
+                    <i class="fa-solid fa-plus"></i> 新增包裝
+                  </button>
+                </div>
+                <!-- Desktop header -->
+                <div class="mobile-hide md:grid grid-cols-[1.5fr_0.8fr_1fr_1fr_1.2fr_0.5fr_0.4fr] gap-3 px-4 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/50">
+                  <div>名稱</div><div>含基本單位</div><div>售價</div><div>成本</div><div>條碼</div><div>預設</div><div></div>
+                </div>
+                <div class="divide-y divide-slate-100 dark:divide-slate-700">
+                  <div v-for="(pkg, idx) in productForm.packagings" :key="idx"
+                    class="px-4 py-3 flex flex-col gap-2 md:grid md:grid-cols-[1.5fr_0.8fr_1fr_1fr_1.2fr_0.5fr_0.4fr] md:items-center md:gap-3">
+                    <div>
+                      <label class="md:hidden text-xs text-slate-500 mb-1 block">名稱</label>
+                      <input v-model="pkg.name" type="text" placeholder="例如 單罐、整箱(24)"
+                        class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    </div>
+                    <div>
+                      <label class="md:hidden text-xs text-slate-500 mb-1 block">含基本單位數量</label>
+                      <input v-model.number="pkg.quantity" type="number" min="1" placeholder="1"
+                        class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    </div>
+                    <div>
+                      <label class="md:hidden text-xs text-slate-500 mb-1 block">售價</label>
+                      <input v-model.number="pkg.price" type="number" min="0" step="0.01" placeholder="0.00"
+                        class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    </div>
+                    <div>
+                      <label class="md:hidden text-xs text-slate-500 mb-1 block">成本</label>
+                      <input v-model.number="pkg.cost" type="number" min="0" step="0.01" placeholder="0.00"
+                        class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    </div>
+                    <div>
+                      <label class="md:hidden text-xs text-slate-500 mb-1 block">條碼</label>
+                      <input v-model="pkg.barcode" type="text" placeholder="條碼(選填)"
+                        class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    </div>
+                    <div class="flex md:block items-center justify-between">
+                      <label class="md:hidden text-xs text-slate-500">預設</label>
+                      <label class="inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 md:justify-center">
+                        <input type="radio" name="default-pkg" :checked="pkg.is_default" @change="setDefaultPackaging(idx)" />
+                        <span class="md:inline hidden">預設</span>
+                      </label>
+                    </div>
+                    <button @click="removePackagingRow(idx)" type="button"
+                      class="text-red-400 hover:text-red-600 min-w-[40px] min-h-[40px] flex items-center justify-center self-end md:self-auto">
+                      <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -898,6 +1516,292 @@ onMounted(async () => {
               <button class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 dark:hover:from-[#B8936A] dark:hover:to-[#8F6A3C] rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 transition-all" @click="saveProduct">
                 儲存
               </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Bulk Import Modal -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showBulkModal" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
+          <div class="absolute inset-0 bg-black/50" @click="closeBulkModal"></div>
+          <div class="relative bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <h3 class="text-lg font-semibold text-slate-800 dark:text-stone-100">
+                批次新增商品
+                <span class="ml-2 text-xs text-slate-500">步驟 {{ bulkStep }} / 2</span>
+              </h3>
+              <button class="text-slate-400 hover:text-slate-600 dark:hover:text-stone-200 min-h-[40px] min-w-[40px]" @click="closeBulkModal">
+                <i class="fa-solid fa-xmark text-lg"></i>
+              </button>
+            </div>
+
+            <!-- Step 1 -->
+            <div v-if="bulkStep === 1" class="p-6 overflow-y-auto space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">供應商 <span class="text-red-500">*</span></label>
+                <select
+                  v-model="bulkSupplier"
+                  class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200"
+                >
+                  <option :value="null" disabled>請選擇供應商</option>
+                  <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">大類（可選）</label>
+                  <select v-model.number="bulkTopCategory" @change="onBulkTopCategoryChange"
+                    class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200">
+                    <option :value="null">-- 無 --</option>
+                    <option v-for="c in topCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 dark:text-stone-200 mb-1">子類（可選）</label>
+                  <select v-model.number="bulkCategory" :disabled="bulkTopCategory === null"
+                    class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200 disabled:opacity-50">
+                    <option :value="bulkTopCategory">（不選子類，使用大類）</option>
+                    <option v-for="c in childCategoriesOf(bulkTopCategory)" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+                <button
+                  class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
+                  :class="bulkMode === 'xlsx' ? 'border-purple-500 text-purple-600 dark:text-purple-400' : 'border-transparent text-slate-500'"
+                  @click="bulkMode = 'xlsx'"
+                >
+                  從 Excel 匯入
+                </button>
+                <button
+                  class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
+                  :class="bulkMode === 'manual' ? 'border-purple-500 text-purple-600 dark:text-purple-400' : 'border-transparent text-slate-500'"
+                  @click="bulkMode = 'manual'"
+                >
+                  手動輸入
+                </button>
+              </div>
+
+              <div v-if="bulkMode === 'xlsx'" class="space-y-3">
+                <p class="text-sm text-slate-600 dark:text-slate-400">選擇 .xlsx 檔案，系統將自動解析商品列表。</p>
+                <input
+                  ref="bulkFileInput"
+                  type="file"
+                  accept=".xlsx"
+                  :disabled="!bulkSupplier || bulkLoading"
+                  class="block w-full text-sm text-slate-700 dark:text-stone-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 dark:file:bg-slate-700 dark:file:text-stone-200"
+                  @change="onBulkFileChange"
+                />
+                <p v-if="bulkLoading" class="text-sm text-slate-500">解析中...</p>
+              </div>
+
+              <div v-else class="space-y-3">
+                <p class="text-sm text-slate-600 dark:text-slate-400">建立空白預覽表，手動輸入商品資料。</p>
+                <button
+                  class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 rounded-lg hover:shadow-md active:scale-95 transition-all"
+                  :disabled="!bulkSupplier"
+                  @click="goManualStep2"
+                >
+                  下一步：手動輸入
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div v-if="bulkStep === 2" class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3">
+              <div v-if="bulkWarnings.length > 0" class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 text-sm text-yellow-800 dark:text-yellow-200">
+                <div class="font-semibold mb-1">解析警告</div>
+                <ul class="list-disc list-inside space-y-0.5">
+                  <li v-for="(w, i) in bulkWarnings" :key="i">{{ w }}</li>
+                </ul>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2 justify-between">
+                <div class="text-sm text-slate-600 dark:text-slate-300">
+                  共 <strong>{{ bulkRows.length }}</strong> 筆
+                  <span v-if="bulkInvalidCount > 0" class="text-red-500 ml-2">{{ bulkInvalidCount }} 筆不合法</span>
+                </div>
+                <div class="flex gap-2">
+                  <button class="px-3 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 active:scale-95 transition-all" @click="addBulkRow">
+                    <i class="fa-solid fa-plus text-xs"></i> 新增一列
+                  </button>
+                  <button class="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 active:scale-95 transition-all" @click="clearBulkRows">
+                    全部清空
+                  </button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+                <table class="w-full text-xs">
+                  <thead class="bg-slate-50 dark:bg-slate-800 sticky top-0">
+                    <tr>
+                      <th class="px-2 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">SKU *</th>
+                      <th class="px-2 py-2 text-left font-semibold text-slate-600 dark:text-slate-300 min-w-[200px]">名稱 *</th>
+                      <th class="px-2 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">條碼</th>
+                      <th class="px-2 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">基本單位</th>
+                      <th class="px-2 py-2 text-right font-semibold text-slate-600 dark:text-slate-300">單價</th>
+                      <th class="px-2 py-2 text-right font-semibold text-slate-600 dark:text-slate-300">整箱數</th>
+                      <th class="px-2 py-2 text-right font-semibold text-slate-600 dark:text-slate-300">整箱價</th>
+                      <th class="px-2 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(row, idx) in bulkRows"
+                      :key="idx"
+                      class="border-t border-slate-100 dark:border-slate-700"
+                      :class="(!row.sku.trim() || !row.name.trim() || rowIsDuplicate(row)) ? 'bg-red-50 dark:bg-red-900/10' : ''"
+                    >
+                      <td class="px-1 py-1"><input v-model="row.sku" class="w-24 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1"><input v-model="row.name" class="w-full px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1"><input v-model="row.barcode" class="w-32 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1"><input v-model="row.baseUnit" class="w-16 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1"><input v-model.number="row.unitPrice" type="number" step="0.01" @input="row.packPrice = (Number(row.unitPrice)||0) * (Number(row.packQty)||0)" class="w-20 px-2 py-1 text-right rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1"><input v-model.number="row.packQty" type="number" @input="row.packPrice = (Number(row.unitPrice)||0) * (Number(row.packQty)||0)" class="w-16 px-2 py-1 text-right rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1"><input v-model.number="row.packPrice" type="number" step="0.01" class="w-24 px-2 py-1 text-right rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-stone-200" /></td>
+                      <td class="px-1 py-1 text-center">
+                        <button class="inline-flex items-center justify-center w-10 h-10 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded active:scale-95 transition-all" @click="removeBulkRow(idx)">
+                          <i class="fa-solid fa-trash"></i>
+                        </button>
+                      </td>
+                    </tr>
+                    <tr v-if="bulkRows.length === 0">
+                      <td colspan="8" class="px-4 py-8 text-center text-slate-400">尚無資料</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div v-if="bulkSkipped.length > 0" class="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg p-3 text-sm text-orange-800 dark:text-orange-200">
+                <div class="font-semibold mb-1">跳過的項目</div>
+                <ul class="list-disc list-inside space-y-0.5 max-h-32 overflow-y-auto">
+                  <li v-for="(s, i) in bulkSkipped" :key="i">#{{ s.index + 1 }} {{ s.sku }} — {{ s.reason }}</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
+              <button
+                v-if="bulkStep === 2"
+                class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg active:scale-95 transition-all"
+                @click="bulkStep = 1"
+              >
+                <i class="fa-solid fa-arrow-left text-xs"></i> 返回
+              </button>
+              <div v-else></div>
+              <div class="flex gap-2">
+                <button class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-stone-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg active:scale-95 transition-all" @click="closeBulkModal">
+                  取消
+                </button>
+                <button
+                  v-if="bulkStep === 2"
+                  :disabled="bulkLoading || bulkRows.length === 0"
+                  class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 dark:from-[#C9A47A] dark:to-[#A07848] hover:from-purple-600 hover:to-violet-700 rounded-lg shadow-sm hover:shadow-md active:scale-95 transition-all disabled:opacity-50"
+                  @click="confirmBulkImport"
+                >
+                  <i class="fa-solid fa-check text-xs"></i> 確認新增
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Category Management Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showCategoryModal" class="fixed inset-0 z-50 flex items-center justify-center">
+          <div class="absolute inset-0 bg-black/40"></div>
+          <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col modal-enter-active">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-stone-50">分類管理</h3>
+              <button class="text-slate-400 hover:text-slate-600 dark:hover:text-stone-200" @click="showCategoryModal = false">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4 flex-1">
+              <!-- Add new top -->
+              <div class="flex gap-2">
+                <input v-model="newTopName" type="text" placeholder="新增大類名稱"
+                  class="flex-1 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200" />
+                <button @click="addTopCategory"
+                  class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-violet-600 rounded-lg active:scale-95 transition-all min-w-[40px] min-h-[40px]">
+                  <i class="fa-solid fa-plus"></i> 新增大類
+                </button>
+              </div>
+
+              <!-- Tree -->
+              <div class="space-y-3">
+                <div v-for="top in topCategories" :key="top.id" class="border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+                  <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-folder text-amber-500"></i>
+                    <template v-if="editingCategoryId === top.id">
+                      <input v-model="editingCategoryName" type="text"
+                        class="flex-1 px-2 py-1 text-sm rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200" />
+                      <button @click="saveEditCategory" class="text-emerald-600 hover:text-emerald-800 min-w-[40px] min-h-[40px]">
+                        <i class="fa-solid fa-check"></i>
+                      </button>
+                      <button @click="editingCategoryId = null" class="text-slate-400 hover:text-slate-600 min-w-[40px] min-h-[40px]">
+                        <i class="fa-solid fa-xmark"></i>
+                      </button>
+                    </template>
+                    <template v-else>
+                      <span class="flex-1 font-medium text-slate-700 dark:text-stone-200">{{ top.name }}</span>
+                      <button @click="startEditCategory(top)" class="text-blue-500 hover:text-blue-700 min-w-[40px] min-h-[40px]">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                      </button>
+                      <button @click="removeCategory(top.id)" class="text-red-500 hover:text-red-700 min-w-[40px] min-h-[40px]">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </template>
+                  </div>
+                  <!-- Children -->
+                  <div class="mt-2 ml-6 space-y-1">
+                    <div v-for="child in childCategoriesOf(top.id)" :key="child.id" class="flex items-center gap-2 text-sm">
+                      <i class="fa-solid fa-angle-right text-slate-400"></i>
+                      <template v-if="editingCategoryId === child.id">
+                        <input v-model="editingCategoryName" type="text"
+                          class="flex-1 px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200" />
+                        <button @click="saveEditCategory" class="text-emerald-600 hover:text-emerald-800 min-w-[40px] min-h-[40px]">
+                          <i class="fa-solid fa-check"></i>
+                        </button>
+                        <button @click="editingCategoryId = null" class="text-slate-400 hover:text-slate-600 min-w-[40px] min-h-[40px]">
+                          <i class="fa-solid fa-xmark"></i>
+                        </button>
+                      </template>
+                      <template v-else>
+                        <span class="flex-1 text-slate-600 dark:text-slate-300">{{ child.name }}</span>
+                        <button @click="startEditCategory(child)" class="text-blue-500 hover:text-blue-700 min-w-[40px] min-h-[40px]">
+                          <i class="fa-solid fa-pen-to-square text-xs"></i>
+                        </button>
+                        <button @click="removeCategory(child.id)" class="text-red-500 hover:text-red-700 min-w-[40px] min-h-[40px]">
+                          <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
+                      </template>
+                    </div>
+                    <!-- Add child inline -->
+                    <div class="flex gap-2 mt-1">
+                      <input v-model="newChildName[top.id]" type="text" placeholder="新增子類"
+                        class="flex-1 px-2 py-1 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200" />
+                      <button @click="addChildCategory(top.id)"
+                        class="px-3 py-1 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded min-w-[40px] min-h-[40px]">
+                        <i class="fa-solid fa-plus"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="topCategories.length === 0" class="text-center text-sm text-slate-400 py-6">尚無分類，請先新增大類</div>
+              </div>
+            </div>
+            <div class="flex items-center justify-end px-6 py-3 border-t border-slate-200 dark:border-slate-700">
+              <button @click="showCategoryModal = false"
+                class="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">關閉</button>
             </div>
           </div>
         </div>

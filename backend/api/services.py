@@ -4,6 +4,8 @@ from uuid import uuid4
 from django.db import transaction
 from django.utils import timezone
 
+from rest_framework.exceptions import ValidationError
+
 from .models import (
     AccountSubject,
     InventoryBatch,
@@ -65,21 +67,51 @@ def create_inventory_from_purchase(purchase_order):
     """
     if purchase_order.status == PurchaseOrder.Status.RECEIVED:
         raise Exception('此採購單已經收貨，不可重複收貨')
+    if purchase_order.status == PurchaseOrder.Status.CANCELLED:
+        raise ValidationError('此採購單已取消，不可收貨')
 
     today = timezone.now().date()
     total_cost = Decimal('0')
+    # 收集每個商品的 (累計行總額, 累計基本單位數) 以計算加權平均 last_cost
+    product_totals: dict = {}
 
-    for item in purchase_order.items.select_related('product'):
-        unit_cost = item.fee / item.quantity
+    for item in purchase_order.items.select_related('product', 'packaging'):
+        # Resolve packaging: fall back to product's default (qty=1) packaging
+        pkg = item.packaging
+        if pkg is None:
+            pkg = item.product.packagings.filter(is_default=True).first() \
+                or item.product.packagings.filter(quantity=1).first()
+        pkg_qty = pkg.quantity if pkg else 1
+        if pkg_qty <= 0:
+            raise ValidationError('包裝數量無效')
+        # fee = 每包裝單價 (per-packaging unit price)，line_total = fee * quantity
+        line_total = Decimal(str(item.fee)) * Decimal(str(item.quantity))
+        base_units = item.quantity * pkg_qty
+        if base_units <= 0:
+            raise ValidationError('包裝數量無效')
+        unit_cost = line_total / Decimal(str(base_units))  # == fee / pkg_qty
         InventoryBatch.objects.create(
             purchase_item=item,
             product=item.product,
-            batch_quantity=item.quantity,
-            remaining_quantity=item.quantity,
+            batch_quantity=base_units,
+            remaining_quantity=base_units,
             unit_cost=unit_cost,
             received_date=today,
         )
-        total_cost += item.fee
+        total_cost += line_total
+        # 累計每個商品的行總額與基本單位數 (稍後計算加權平均)
+        acc = product_totals.setdefault(
+            item.product_id, {'product': item.product, 'line_total': Decimal('0'), 'base_units': 0}
+        )
+        acc['line_total'] += line_total
+        acc['base_units'] += base_units
+
+    # 每個商品以加權平均方式一次性更新 last_cost
+    for acc in product_totals.values():
+        if acc['base_units'] > 0:
+            new_last_cost = acc['line_total'] / Decimal(str(acc['base_units']))
+            acc['product'].last_cost = new_last_cost
+            acc['product'].save(update_fields=['last_cost', 'updated_at'])
 
     # 自動會計分錄：借 商品存貨 / 貸 銀行存款
     try:
@@ -139,9 +171,15 @@ def complete_order(order):
     total_cogs = Decimal('0')
     total_revenue = Decimal('0')
 
-    # 1. 遍歷訂單明細，逐一 FIFO 扣減
-    for item in order.items.select_related('product'):
-        deductions = deduct_inventory_fifo(item.product, item.quantity)
+    # 1. 遍歷訂單明細，逐一 FIFO 扣減 (以「基本單位」計算)
+    for item in order.items.select_related('product', 'packaging'):
+        pkg = item.packaging
+        if pkg is None:
+            pkg = item.product.packagings.filter(is_default=True).first() \
+                or item.product.packagings.filter(quantity=1).first()
+        pkg_qty = pkg.quantity if pkg else 1
+        base_qty = item.quantity * pkg_qty
+        deductions = deduct_inventory_fifo(item.product, base_qty)
         item_cogs = sum(
             Decimal(str(d['quantity_deducted'])) * d['unit_cost']
             for d in deductions
@@ -150,10 +188,16 @@ def complete_order(order):
         total_revenue += item.quantity * item.selling_price
 
     # 2. 取得會計科目
-    cogs_account = AccountSubject.objects.get(code='6001')
-    inventory_account = AccountSubject.objects.get(code='1001')
-    receivable_account = AccountSubject.objects.get(code='1002')
-    revenue_account = AccountSubject.objects.get(code='5001')
+    def _get_subject(code):
+        try:
+            return AccountSubject.objects.get(code=code)
+        except AccountSubject.DoesNotExist:
+            raise ValidationError(f'會計科目 {code} 不存在，請先建立')
+
+    cogs_account = _get_subject('6001')
+    inventory_account = _get_subject('1001')
+    receivable_account = _get_subject('1002')
+    revenue_account = _get_subject('5001')
 
     # 3. 傳票 1：借 COGS / 貸 存貨
     voucher1 = JournalVoucher.objects.create(

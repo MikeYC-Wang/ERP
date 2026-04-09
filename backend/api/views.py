@@ -10,8 +10,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.db.models import ProtectedError
+
 from .models import (
     AccountSubject,
+    Category,
     Customer,
     InventoryBatch,
     JournalVoucher,
@@ -25,6 +28,7 @@ from .models import (
 )
 from .serializers import (
     AccountSubjectSerializer,
+    CategorySerializer,
     CustomerSerializer,
     InventoryBatchSerializer,
     JournalVoucherItemSerializer,
@@ -66,9 +70,147 @@ class JournalVoucherItemViewSet(viewsets.ModelViewSet):
     serializer_class = JournalVoucherItemSerializer
 
 
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all().select_related('parent')
+    serializer_class = CategorySerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parent_param = self.request.query_params.get('parent')
+        if parent_param is not None:
+            if parent_param in ('null', 'none', ''):
+                qs = qs.filter(parent__isnull=True)
+            else:
+                try:
+                    qs = qs.filter(parent_id=int(parent_param))
+                except (TypeError, ValueError):
+                    qs = qs.none()
+        return qs
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Reject if there are children
+        if instance.children.exists():
+            return Response({'error': '此分類下還有子類，無法刪除'}, status=status.HTTP_400_BAD_REQUEST)
+        if instance.products.exists():
+            return Response({'error': '此分類下還有商品,無法刪除'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError:
+            return Response({'error': '此分類下還有商品,無法刪除'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['get'], url_path='tree')
+    def tree(self, request):
+        """Flat tree in display order: top-level rows interleaved with their children."""
+        result = []
+        tops = Category.objects.filter(parent__isnull=True).order_by('name')
+        for top in tops:
+            result.append({
+                'id': top.id,
+                'name': top.name,
+                'parent': None,
+                'parent_name': '',
+                'full_name': top.name,
+                'depth': 0,
+                'children_count': top.children.count(),
+            })
+            for child in top.children.all().order_by('name'):
+                result.append({
+                    'id': child.id,
+                    'name': child.name,
+                    'parent': top.id,
+                    'parent_name': top.name,
+                    'full_name': f'{top.name} / {child.name}',
+                    'depth': 1,
+                    'children_count': 0,
+                })
+        return Response(result)
+
+
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+
+    @action(detail=False, methods=['post'], url_path='bulk-import')
+    def bulk_import(self, request):
+        """批次新增商品。Body: {supplier, rows: [{sku, name, barcode, base_unit, safety_stock, packagings:[...]}]}"""
+        from django.db import transaction as _tx
+        supplier_id = request.data.get('supplier')
+        category_id = request.data.get('category')
+        rows = request.data.get('rows') or []
+        if not isinstance(rows, list) or not rows:
+            return Response({'error': 'rows is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        created = 0
+        skipped = []
+        errors = []
+
+        # Pre-check duplicate SKUs within the batch and against DB
+        seen = set()
+        existing_skus = set(
+            Product.objects.filter(sku__in=[r.get('sku') for r in rows if r.get('sku')])
+            .values_list('sku', flat=True)
+        )
+
+        try:
+            with _tx.atomic():
+                for idx, row in enumerate(rows):
+                    sku = (row.get('sku') or '').strip()
+                    if not sku:
+                        skipped.append({'index': idx, 'sku': '', 'reason': 'SKU 為必填'})
+                        continue
+                    if sku in seen:
+                        skipped.append({'index': idx, 'sku': sku, 'reason': '批次內 SKU 重複'})
+                        continue
+                    if sku in existing_skus:
+                        skipped.append({'index': idx, 'sku': sku, 'reason': 'SKU 已存在於資料庫'})
+                        continue
+                    seen.add(sku)
+
+                    payload = {
+                        'sku': sku,
+                        'name': row.get('name') or sku,
+                        'base_unit': row.get('base_unit') or '個',
+                        'unit': row.get('base_unit') or '個',
+                        'safety_stock': row.get('safety_stock') or 0,
+                        'current_price': 0,
+                        'supplier': supplier_id,
+                        'category': category_id,
+                        'packagings': row.get('packagings') or [],
+                    }
+                    # Default current_price from default packaging if any
+                    for pkg in payload['packagings']:
+                        if pkg.get('is_default'):
+                            payload['current_price'] = pkg.get('price') or 0
+                            break
+
+                    serializer = ProductSerializer(data=payload)
+                    if not serializer.is_valid():
+                        skipped.append({'index': idx, 'sku': sku, 'reason': str(serializer.errors)})
+                        continue
+                    serializer.save()
+                    created += 1
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'created': created, 'skipped': skipped, 'errors': errors})
+
+    @action(detail=False, methods=['post'], url_path='parse-xlsx')
+    def parse_xlsx(self, request):
+        """解析 xlsx 檔案，回傳 rows + warnings。"""
+        from .xlsx_parser import parse_workbook
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'error': 'file is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.size > 5 * 1024 * 1024:
+            return Response({'error': '檔案過大 (>5MB)'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rows, warnings = parse_workbook(upload)
+        except Exception as e:
+            return Response({'error': f'解析失敗: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'rows': rows, 'warnings': warnings})
 
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
