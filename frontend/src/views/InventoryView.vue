@@ -861,7 +861,7 @@ async function confirmBulkImport() {
 }
 
 async function reloadProducts() {
-  const res = await getProducts().catch(() => null)
+  const res = await getProducts({ page_size: 1000 }).catch(() => null)
   if (res?.data) {
     const list = Array.isArray(res.data) ? res.data : res.data?.results ?? []
     products.value = list.map((p: Record<string, unknown>) => mapProductFromApi(p))
@@ -873,7 +873,7 @@ onMounted(async () => {
   loading.value = true
   try {
     const [productsRes, batchesRes, purchasesRes, suppliersRes] = await Promise.all([
-      getProducts().catch(() => null),
+      getProducts({ page_size: 1000 }).catch(() => null),
       getInventoryBatches().catch(() => null),
       getPurchaseOrders({ page_size: 1000 }).catch(() => null),
       getSuppliers({ page_size: 1000 }).catch(() => null),
