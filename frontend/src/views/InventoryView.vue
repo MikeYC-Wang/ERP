@@ -82,6 +82,7 @@ function categoryFullName(id: number | null): string {
 // Filter bar state (for product table)
 const filterTopCategory = ref<number | null>(null)
 const filterSubCategory = ref<number | null>(null)
+const filterSupplier = ref<number | null>(null)
 const filterSearch = ref('')
 
 const filteredProducts = computed(() => {
@@ -97,6 +98,7 @@ const filteredProducts = computed(() => {
       const cat = categories.value.find(c => c.id === catId)
       if (!cat || cat.parent !== filterTopCategory.value) return false
     }
+    if (filterSupplier.value !== null && p.supplier !== filterSupplier.value) return false
     if (q) {
       if (!p.name.toLowerCase().includes(q) && !p.sku.toLowerCase().includes(q)) return false
     }
@@ -998,6 +1000,11 @@ onMounted(async () => {
               class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44 disabled:opacity-50">
               <option :value="null">全部子類</option>
               <option v-for="c in childCategoriesOf(filterTopCategory)" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
+            <select v-model.number="filterSupplier"
+              class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:w-44">
+              <option :value="null">全部廠商</option>
+              <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
             <input v-model="filterSearch" type="text" placeholder="搜尋商品名稱 / SKU"
               class="text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-stone-200 px-3 py-2 md:flex-1" />
