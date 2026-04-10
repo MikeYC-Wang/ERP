@@ -657,6 +657,12 @@ const filteredPurchases = computed(() =>
     : purchaseOrders.value.filter(p => p.status === purchaseStatusFilter.value)
 )
 
+const purchaseFilteredProducts = computed(() =>
+  purchaseForm.value.supplier
+    ? products.value.filter(p => p.supplierName === purchaseForm.value.supplier)
+    : products.value
+)
+
 function openAddPurchase() {
   editingPurchase.value = null
   purchaseForm.value = {
@@ -1600,7 +1606,7 @@ onMounted(async () => {
                     <select v-model.number="item.product" @change="onPurchaseProductChange(idx)"
                       class="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
                       <option :value="0" disabled>選擇商品</option>
-                      <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.sku }})</option>
+                      <option v-for="p in purchaseFilteredProducts" :key="p.id" :value="p.id">{{ p.name }} ({{ p.sku }})</option>
                     </select>
                   </div>
                   <div>
