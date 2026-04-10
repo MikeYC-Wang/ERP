@@ -578,6 +578,15 @@ const countRows = computed(() =>
     })
 )
 
+const countPage = ref(1)
+const countPageSize = 15
+const countTotalPages = computed(() => Math.max(1, Math.ceil(countRows.value.length / countPageSize)))
+const pagedCountRows = computed(() => {
+  const start = (countPage.value - 1) * countPageSize
+  return countRows.value.slice(start, start + countPageSize)
+})
+watch([filterTopCategory, filterSubCategory, filterSupplier, filterSearch, showOnlyCounted], () => { countPage.value = 1 })
+
 const lowStockItems = computed(() =>
   stockSummary.value.filter((r) => r.isLow)
 )
@@ -1364,7 +1373,7 @@ onMounted(async () => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(row, index) in countRows"
+                    v-for="(row, index) in pagedCountRows"
                     :key="row.id"
                     class="border-b border-slate-100 dark:border-slate-700/50 transition-all"
                     :class="[
@@ -1423,6 +1432,22 @@ onMounted(async () => {
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div class="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700">
+              <span class="text-xs text-slate-500 dark:text-slate-400 leading-tight">
+                <span class="block md:inline">共 {{ countRows.length }} 筆</span><span class="hidden md:inline">，</span><span class="block md:inline">第 {{ countPage }}/{{ countTotalPages }} 頁</span>
+              </span>
+              <div class="flex items-center gap-1">
+                <button :disabled="countPage === 1" @click="countPage--"
+                  class="px-2.5 py-1.5 text-xs rounded-md disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all">
+                  <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span class="text-xs text-slate-500 dark:text-slate-400 px-2">{{ countPage }} / {{ countTotalPages }}</span>
+                <button :disabled="countPage >= countTotalPages" @click="countPage++"
+                  class="px-2.5 py-1.5 text-xs rounded-md disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all">
+                  <i class="fa-solid fa-chevron-right"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
