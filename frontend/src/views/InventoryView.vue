@@ -476,6 +476,7 @@ interface StockSummaryRow {
 const stockSummary = ref<StockSummaryRow[]>([])
 // Draft actual-count input: productId -> number (persisted to backend via autosave)
 const actualCounts = ref<Record<number, number | null>>({})
+const focusedCountRowId = ref<number | null>(null)
 // Tracks which products have a user-entered / backend-loaded value.
 // Rows not in this set display 0 by default but are NOT saved to backend.
 const touchedCounts = ref<Record<number, boolean>>({})
@@ -1367,9 +1368,11 @@ onMounted(async () => {
                     :key="row.id"
                     class="border-b border-slate-100 dark:border-slate-700/50 transition-all"
                     :class="[
-                      row.isLow
-                        ? 'bg-red-50 dark:bg-red-900/20'
-                        : index % 2 === 1 ? 'bg-purple-50/20 dark:bg-gray-800/50' : ''
+                      focusedCountRowId === row.id
+                        ? 'bg-amber-100/60 dark:bg-amber-900/30 ring-1 ring-amber-400/50'
+                        : row.isLow
+                          ? 'bg-red-50 dark:bg-red-900/20'
+                          : index % 2 === 1 ? 'bg-purple-50/20 dark:bg-gray-800/50' : ''
                     ]"
                   >
                     <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ row.name }}</td>
@@ -1384,6 +1387,8 @@ onMounted(async () => {
                         <input
                           :value="actualCounts[row.id] ?? 0"
                           @input="(e) => { const v = (e.target as HTMLInputElement).value; actualCounts[row.id] = v === '' ? 0 : Number(v); onStocktakeInput(row.id) }"
+                          @focus="focusedCountRowId = row.id"
+                          @blur="focusedCountRowId = null"
                           type="number"
                           min="0"
                           class="w-20 text-right rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-stone-50 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
