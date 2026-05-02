@@ -206,6 +206,12 @@ function findSubjectIdByName(name: string): string {
   return s ? String(s.id) : ''
 }
 
+function todayISO(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 function openAddVoucher() {
   editingVoucherId.value = null
   const pair1: VoucherPair = {
@@ -221,7 +227,7 @@ function openAddVoucher() {
     amountInput: '',
   }
   voucherForm.value = {
-    date: '',
+    date: todayISO(),
     description: '',
     isPosted: true,
     pairs: [pair1, pair2],
@@ -333,6 +339,14 @@ function mapApiVoucher(v: Record<string, unknown>): JournalVoucher {
 }
 
 async function saveVoucher() {
+  // Force any in-flight IME composition to commit before reading form values.
+  // Without this, clicking 儲存 while still composing (e.g. 注音/拼音) can finalize
+  // the composition with the IME's top candidate instead of what's on screen
+  // (bug: 「寶寶罐」 → 「賓賓罐」).
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+    await new Promise((r) => setTimeout(r, 0))
+  }
   if (!isBalanced.value) return
   const items: Array<{ account_subject: number; debit_amount: number; credit_amount: number }> = []
   voucherForm.value.pairs.forEach((p) => {

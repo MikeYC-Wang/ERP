@@ -368,6 +368,26 @@ body {
 .dark .text-orange-500 { color: #FFB347 !important; }
 .dark .text-amber-400  { color: #FFD480 !important; }
 
+/* ─── Dark mode: native date picker icon ─── */
+/* WebKit's calendar-picker-indicator is dark by default and disappears against
+   the milk-tea dark surfaces. Invert it so it stays visible on dark inputs. */
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator,
+.dark input[type="month"]::-webkit-calendar-picker-indicator,
+.dark input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2);
+  opacity: 0.7;
+  cursor: pointer;
+}
+.dark input[type="date"]::-webkit-calendar-picker-indicator:hover,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+.dark input[type="time"]::-webkit-calendar-picker-indicator:hover,
+.dark input[type="month"]::-webkit-calendar-picker-indicator:hover,
+.dark input[type="week"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* ─── Mobile responsive layer (≤767px) ─── */
 @media (max-width: 767px) {
   /* Prevent iOS zoom: inputs/selects/textareas at ≥16px */
