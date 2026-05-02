@@ -168,6 +168,10 @@ const filteredVouchers = computed(() => {
   })
 })
 
+function voucherTotal(v: JournalVoucher): number {
+  return v.entries.reduce((s, e) => s + Number(e.debitAmount || 0), 0)
+}
+
 // ─── Pagination: Journal Vouchers ───
 const voucherPage = ref(1)
 const VOUCHER_PAGE_SIZE = 15
@@ -817,6 +821,7 @@ onMounted(async () => {
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">日期</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">傳票編號</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">摘要</th>
+                    <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">金額</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">類型</th>
                     <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">狀態</th>
                     <th class="text-right px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">操作</th>
@@ -832,6 +837,7 @@ onMounted(async () => {
                     <td class="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">{{ voucher.date }}</td>
                     <td class="px-5 py-3 font-medium text-slate-700 dark:text-stone-200">{{ voucher.voucherNumber }}</td>
                     <td class="px-5 py-3 text-slate-500 dark:text-slate-400">{{ voucher.description }}</td>
+                    <td class="px-5 py-3 text-right font-mono tabular-nums text-slate-700 dark:text-stone-200">${{ voucherTotal(voucher).toLocaleString() }}</td>
                     <td class="px-5 py-3">
                       <span
                         v-if="voucher.isSystemGenerated"
@@ -881,7 +887,7 @@ onMounted(async () => {
                     </td>
                   </tr>
                   <tr v-if="pagedVouchers.length === 0">
-                    <td colspan="6" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
+                    <td colspan="7" class="px-5 py-8 text-center text-slate-400 dark:text-slate-500">
                       {{ selectedJournalYear }} 年度無傳票資料。
                     </td>
                   </tr>
